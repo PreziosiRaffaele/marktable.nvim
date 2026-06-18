@@ -10,14 +10,14 @@ local markdown_table = require('marktable.table')
 local namespace = vim.api.nvim_create_namespace('marktable')
 
 ---@class MarktableConfig
----@field width integer Maximum width of the floating editor window, in columns.
----@field min_height integer Minimum height of the floating editor window, in rows.
+---@field width integer Width of the floating editor window, in columns.
+---@field height integer Height of the floating editor window, in rows.
 
 ---Default plugin settings.
 ---@type MarktableConfig
 local defaults = {
     width = 110,
-    min_height = 16,
+    height = 16,
 }
 
 ---Active plugin settings, overridden by `setup()`.
@@ -304,13 +304,12 @@ local function submit_editor(editor_buf, editor_win, context)
 end
 
 ---Compute floating editor dimensions for the current Neovim UI.
----@param line_count integer Number of editor source lines.
 ---@return table config Window config for `nvim_open_win`.
-local function floating_window_config(line_count)
+local function floating_window_config()
     local max_width = math.max(vim.o.columns - 4, 20)
     local max_height = math.max(vim.o.lines - 6, 8)
     local width = math.min(config.width, max_width)
-    local height = math.min(math.max(line_count + 2, config.min_height), max_height)
+    local height = math.min(config.height, max_height)
 
     return {
         relative = 'editor',
@@ -339,7 +338,7 @@ local function open_row_editor(context, title, lines)
     vim.api.nvim_buf_set_lines(editor_buf, 0, -1, false, lines)
     vim.bo[editor_buf].modified = false
 
-    local win_config = floating_window_config(#lines)
+    local win_config = floating_window_config()
     win_config.title = ' ' .. title .. ' '
     win_config.title_pos = 'center'
 

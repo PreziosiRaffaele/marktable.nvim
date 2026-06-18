@@ -15,8 +15,8 @@ Call `setup()` to override the floating editor size. Defaults shown:
 
 ```lua
 require('marktable').setup({
-    width = 110,     -- maximum width of the floating editor, in columns
-    min_height = 16, -- minimum height of the floating editor, in rows
+    width = 110,  -- width of the floating editor, in columns
+    height = 16,  -- height of the floating editor, in rows
 })
 ```
 

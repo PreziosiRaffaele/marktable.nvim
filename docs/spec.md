@@ -35,22 +35,20 @@ dependency.
 `setup()` accepts an optional settings table controlling the floating editor
 size. Each option is optional and falls back to its default:
 
-| Option       | Type      | Default | Meaning                                          |
-| ------------ | --------- | ------- | ------------------------------------------------ |
-| `width`      | `integer` | `110`   | Maximum width of the floating editor, in columns. |
-| `min_height` | `integer` | `16`    | Minimum height of the floating editor, in rows.   |
+| Option   | Type      | Default | Meaning                                   |
+| -------- | --------- | ------- | ----------------------------------------- |
+| `width`  | `integer` | `110`   | Width of the floating editor, in columns. |
+| `height` | `integer` | `16`    | Height of the floating editor, in rows.   |
 
 ```lua
 require('marktable').setup({
   width = 110,
-  min_height = 16,
+  height = 16,
 })
 ```
 
-The editor never shrinks below `min_height` rows and never exceeds `width`
-columns, but both values are clamped to the available UI space so the window
-never overflows the screen. Height otherwise grows to fit the editor's source
-lines.
+Both values are clamped to the available UI space so the window never overflows
+the screen. Content taller than the window scrolls.
 
 ## Table Shape
 
