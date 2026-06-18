@@ -2,12 +2,12 @@
 ---
 ---Responsibility:
 ---Expose row-first Markdown table editing commands while keeping parsing and
----rendering delegated to `markdown_table_row.table`.
+---rendering delegated to `marktable.table`.
 local M = {}
 
-local markdown_table = require('markdown_table_row.table')
+local markdown_table = require('marktable.table')
 
-local namespace = vim.api.nvim_create_namespace('markdown_table_row')
+local namespace = vim.api.nvim_create_namespace('marktable')
 
 ---@class MarkdownTableEditorContext
 ---@field source_buf integer Markdown buffer being edited.
@@ -315,7 +315,7 @@ end
 ---@return nil
 local function open_row_editor(context, title, lines)
     local editor_buf = vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_buf_set_name(editor_buf, 'MarkdownTableRow-' .. tostring((vim.uv or vim.loop).hrtime()))
+    vim.api.nvim_buf_set_name(editor_buf, 'Marktable-' .. tostring((vim.uv or vim.loop).hrtime()))
 
     vim.bo[editor_buf].buftype = 'acwrite'
     vim.bo[editor_buf].bufhidden = 'wipe'
@@ -346,7 +346,7 @@ local function open_row_editor(context, title, lines)
         close_editor(editor_win, context)
     end, {
         buffer = editor_buf,
-        desc = 'Cancel Markdown table row editor',
+        desc = 'Cancel Marktable row editor',
         nowait = true,
         silent = true,
     })
@@ -437,17 +437,17 @@ end
 -- Public API
 -- ============================================================================
 
----Register Markdown table row editor commands.
+---Register Marktable editor commands.
 ---
 ---Side effects:
----Creates the `:MarkdownTableRowNew` and `:MarkdownTableRowEdit` user commands.
+---Creates the `:MarktableNew` and `:MarktableEdit` user commands.
 ---@return nil
 function M.setup()
-    vim.api.nvim_create_user_command('MarkdownTableRowNew', open_new_row_editor, {
+    vim.api.nvim_create_user_command('MarktableNew', open_new_row_editor, {
         desc = 'Insert a new row into the Markdown table under the cursor',
     })
 
-    vim.api.nvim_create_user_command('MarkdownTableRowEdit', open_current_row_editor, {
+    vim.api.nvim_create_user_command('MarktableEdit', open_current_row_editor, {
         desc = 'Edit the Markdown table data row under the cursor',
     })
 end

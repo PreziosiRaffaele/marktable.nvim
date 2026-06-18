@@ -1,4 +1,4 @@
-# Spec: Markdown table row editor
+# Spec: marktable.nvim
 
 ## Problem
 
@@ -18,10 +18,10 @@ any domain-specific table schema. Column headers define the editable fields.
 
 ## Commands
 
-- `:MarkdownTableRowNew`: find the table under the cursor, open a floating row
+- `:MarktableNew`: find the table under the cursor, open a floating row
   editor titled `New Markdown Table Row` with one empty field per header, then
   insert a generated row.
-- `:MarkdownTableRowEdit`: find the data row under the cursor, reconstruct an
+- `:MarktableEdit`: find the data row under the cursor, reconstruct an
   editable source buffer from that row, show its table data-row index in the
   `Edit Markdown Table Row N` editor title, then replace only that row.
 
@@ -119,14 +119,14 @@ From the cursor row:
 
 ## Insert Behavior
 
-For `:MarkdownTableRowNew`:
+For `:MarktableNew`:
 
 - If the cursor is on the header or separator row, insert after the separator.
 - If the cursor is on a data row, insert below the cursor row.
 - If the submitted source is invalid, keep the editor open and notify with
   `ERROR`.
 
-For `:MarkdownTableRowEdit`:
+For `:MarktableEdit`:
 
 - Replace only the row under the cursor.
 - If the cursor is outside a supported data row, notify with `WARN` and leave
@@ -134,10 +134,10 @@ For `:MarkdownTableRowEdit`:
 
 ## Implementation
 
-Add a reusable Markdown table helper module:
+The reusable Markdown table helper module lives at:
 
 ```text
-lua/rpreziosi/lib/markdown_table.lua
+lua/marktable/table.lua
 ```
 
 Responsibilities:
@@ -147,16 +147,16 @@ Responsibilities:
 - Escape and unescape table cells.
 - Validate separator rows and row widths.
 
-Add the command module:
+The command module lives at:
 
 ```text
-lua/rpreziosi/commands/markdown_table.lua
+lua/marktable/init.lua
 ```
 
-Register it from `lua/rpreziosi/init.lua`:
+Register it from the Neovim startup shim:
 
 ```lua
-require('rpreziosi.commands.markdown_table').setup()
+require('marktable').setup()
 ```
 
 Follow the local Lua conventions: module responsibility comment, local helpers

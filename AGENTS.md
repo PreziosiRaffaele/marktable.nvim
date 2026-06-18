@@ -6,9 +6,9 @@ This is a local Neovim plugin for editing one Markdown pipe-table row through a
 floating, section-based Markdown buffer.
 
 - Plugin root: this repository.
-- Main module: `lua/markdown_table_row/init.lua`
-- Table parser/renderer: `lua/markdown_table_row/table.lua`
-- Startup shim: `plugin/markdown-table-row.lua`
+- Main module: `lua/marktable/init.lua`
+- Table parser/renderer: `lua/marktable/table.lua`
+- Startup shim: `plugin/marktable.lua`
 
 ## Source of Truth
 
@@ -28,11 +28,11 @@ When changing or removing public commands, flags, columns, or JSON fields, updat
 
 ## Folder Structure
 
-- `plugin/markdown-table-row.lua`: Neovim startup shim. Keep it minimal; require
+- `plugin/marktable.lua`: Neovim startup shim. Keep it minimal; require
   the Lua module and call `setup()` only.
-- `lua/markdown_table_row/init.lua`: command registration, floating editor UI,
+- `lua/marktable/init.lua`: command registration, floating editor UI,
   source-buffer anchoring, and submit/cancel behavior.
-- `lua/markdown_table_row/table.lua`: Markdown table detection, row
+- `lua/marktable/table.lua`: Markdown table detection, row
   parsing/rendering, validation, escaping, and unescaping.
 - `tests/unit/`: pure table parser/renderer tests.
 - `tests/integration/`: command and floating-editor behavior tests.
@@ -45,7 +45,7 @@ Avoid adding new top-level directories unless they have a clear role.
 
 ## Development Practices
 
-- Keep startup cheap. Avoid expensive work in `plugin/markdown-table-row.lua` or
+- Keep startup cheap. Avoid expensive work in `plugin/marktable.lua` or
   during `setup()`.
 - Prefer small, local helpers over broad abstractions. Extract only when it
   reduces real duplication or clarifies a boundary.

@@ -1,4 +1,4 @@
-local plugin = require('markdown_table_row')
+local plugin = require('marktable')
 local expect = MiniTest.expect
 local eq = expect.equality
 
@@ -24,10 +24,7 @@ local T = MiniTest.new_set({
             end
 
             for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-                if
-                    vim.api.nvim_buf_is_valid(buf)
-                    and vim.api.nvim_buf_get_name(buf):match('/MarkdownTableRow%-') ~= nil
-                then
+                if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_name(buf):match('/Marktable%-') ~= nil then
                     pcall(vim.api.nvim_buf_delete, buf, { force = true })
                 end
             end
@@ -74,14 +71,14 @@ local function write_editor(replacement)
     return ok, err
 end
 
-T['MarkdownTableRowEdit opens the current row in a section editor'] = function()
+T['MarktableEdit opens the current row in a section editor'] = function()
     local source = source_buffer({
         '| Name | Notes |',
         '| --- | --- |',
         '| Alpha | one<br>two |',
     }, 3)
 
-    vim.cmd('MarkdownTableRowEdit')
+    vim.cmd('MarktableEdit')
 
     eq(vim.bo.buftype, 'acwrite')
     eq(window_title(0), ' Edit Markdown Table Row 1 ')
@@ -112,14 +109,14 @@ T['MarkdownTableRowEdit opens the current row in a section editor'] = function()
     })
 end
 
-T['MarkdownTableRowNew inserts after the separator when launched from the header'] = function()
+T['MarktableNew inserts after the separator when launched from the header'] = function()
     local source = source_buffer({
         '| Name | Notes |',
         '| --- | --- |',
         '| Alpha | one |',
     }, 1)
 
-    vim.cmd('MarkdownTableRowNew')
+    vim.cmd('MarktableNew')
 
     eq(vim.bo.buftype, 'acwrite')
     eq(window_title(0), ' New Markdown Table Row ')
@@ -147,14 +144,14 @@ T['MarkdownTableRowNew inserts after the separator when launched from the header
     })
 end
 
-T['MarkdownTableRowEdit keeps the editor open on invalid section order'] = function()
+T['MarktableEdit keeps the editor open on invalid section order'] = function()
     local source = source_buffer({
         '| Name | Notes |',
         '| --- | --- |',
         '| Alpha | one |',
     }, 3)
 
-    vim.cmd('MarkdownTableRowEdit')
+    vim.cmd('MarktableEdit')
     local ok, err = write_editor({
         '# Notes',
         'out of order',

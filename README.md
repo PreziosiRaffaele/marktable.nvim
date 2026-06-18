@@ -1,11 +1,11 @@
-# markdowntablerow.nvim
+# marktable.nvim
 
 Row-first editor for Markdown pipe-table rows.
 
 ## Commands
 
-- `:MarkdownTableRowNew` opens a floating editor with one empty section per table header and inserts the generated row.
-- `:MarkdownTableRowEdit` opens the data row under the cursor, shows its row number in the floating editor title, and replaces only that row.
+- `:MarktableNew` opens a floating editor with one empty section per table header and inserts the generated row.
+- `:MarktableEdit` opens the data row under the cursor, shows its row number in the floating editor title, and replaces only that row.
 
 Submit with `:w` or `:wq`. Cancel with `q`.
 
