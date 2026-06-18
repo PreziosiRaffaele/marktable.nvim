@@ -9,6 +9,21 @@ local markdown_table = require('marktable.table')
 
 local namespace = vim.api.nvim_create_namespace('marktable')
 
+---@class MarktableConfig
+---@field width integer Maximum width of the floating editor window, in columns.
+---@field min_height integer Minimum height of the floating editor window, in rows.
+
+---Default plugin settings.
+---@type MarktableConfig
+local defaults = {
+    width = 110,
+    min_height = 16,
+}
+
+---Active plugin settings, overridden by `setup()`.
+---@type MarktableConfig
+local config = vim.deepcopy(defaults)
+
 ---@class MarkdownTableEditorContext
 ---@field source_buf integer Markdown buffer being edited.
 ---@field source_win integer Window that launched the editor.
@@ -294,8 +309,8 @@ end
 local function floating_window_config(line_count)
     local max_width = math.max(vim.o.columns - 4, 20)
     local max_height = math.max(vim.o.lines - 6, 8)
-    local width = math.min(96, max_width)
-    local height = math.min(math.max(line_count + 2, 12), max_height)
+    local width = math.min(config.width, max_width)
+    local height = math.min(math.max(line_count + 2, config.min_height), max_height)
 
     return {
         relative = 'editor',
@@ -440,9 +455,13 @@ end
 ---Register Marktable editor commands.
 ---
 ---Side effects:
----Creates the `:MarktableNew` and `:MarktableEdit` user commands.
+---Merges `opts` into the active settings and creates the `:MarktableNew` and
+---`:MarktableEdit` user commands.
+---@param opts MarktableConfig|nil User settings overriding the defaults.
 ---@return nil
-function M.setup()
+function M.setup(opts)
+    config = vim.tbl_deep_extend('force', vim.deepcopy(defaults), opts or {})
+
     vim.api.nvim_create_user_command('MarktableNew', open_new_row_editor, {
         desc = 'Insert a new row into the Markdown table under the cursor',
     })
