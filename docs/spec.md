@@ -19,9 +19,11 @@ any domain-specific table schema. Column headers define the editable fields.
 ## Commands
 
 - `:MarktableNew`: find the table under the cursor, open a floating row
-  editor with one empty field per header, then insert a generated row.
+  editor titled `New Markdown Table Row` with one empty field per header, then
+  insert a generated row.
 - `:MarktableEdit`: find the data row under the cursor, reconstruct an
-  editable source buffer from that row, then replace only that row.
+  editable source buffer from that row, show its table data-row index in the
+  `Edit Markdown Table Row N` editor title, then replace only that row.
 
 Submit the floating editor with `:w` or `:wq`. Cancel with `q`.
 
@@ -50,32 +52,28 @@ Rules:
 
 ## Source Format
 
-The row editor uses a first-level heading for row context, then one second-level
-heading per table column:
+The row editor uses one top-level heading per table column. Row context is
+shown in the floating window title rather than in the editable buffer:
 
 ```markdown
-# Row 1
-
-## Option
+# Option
 SQLite
 
-## Description
+# Description
 Embedded relational database in a single file.
 Useful for local notes.
 
-## Recommendation
+# Recommendation
 Preferred
 ```
 
 Parsing rules:
 
-- The first non-empty line must be a `# Row N` or `# New row` heading.
-- The first-level heading is editor context only; it is not written to the
-  table.
-- Column sections start with `## <column header>`.
+- Leading blank lines before the first column section are ignored.
+- Column sections start with `# <column header>`.
 - Column heading matching is case-sensitive after trimming.
 - Each table column must appear exactly once, in table order.
-- A cell value is the full section body until the next known `## <column
+- A cell value is the full section body until the next known `# <column
   header>` section.
 - Leading and trailing blank lines inside a section are ignored.
 - Internal line breaks are preserved as cell line breaks.
@@ -84,13 +82,11 @@ Parsing rules:
 New row template:
 
 ```markdown
-# New row
+# Option
 
-## Option
+# Description
 
-## Description
-
-## Recommendation
+# Recommendation
 ```
 
 ## Generated Row

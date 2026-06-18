@@ -46,15 +46,14 @@ local function split_cell_lines(value)
 end
 
 ---Build row-editor source lines from table headers and optional cell values.
----@param heading string First-level context heading.
 ---@param headers string[] Table headers in order.
 ---@param cells string[]|nil Existing cell values, or nil for a new row.
 ---@return string[] lines Editor buffer lines.
-local function build_editor_lines(heading, headers, cells)
-    local lines = { heading, '' }
+local function build_editor_lines(headers, cells)
+    local lines = {}
 
     for index, header in ipairs(headers) do
-        table.insert(lines, '## ' .. header)
+        table.insert(lines, '# ' .. header)
 
         for _, value_line in ipairs(split_cell_lines(cells and cells[index] or '')) do
             table.insert(lines, value_line)
@@ -68,34 +67,12 @@ local function build_editor_lines(heading, headers, cells)
     return lines
 end
 
----Return the first non-empty line in a source buffer.
----@param lines string[] Editor lines.
----@return integer|nil index 1-based line index.
----@return string|nil text Trimmed line text.
-local function first_non_empty_line(lines)
-    for index, line in ipairs(lines) do
-        local text = vim.trim(line)
-        if text ~= '' then
-            return index, text
-        end
-    end
-
-    return nil, nil
-end
-
----Check whether a line is the required row context heading.
----@param line string Trimmed line text.
----@return boolean valid True when the line is `# Row N` or `# New row`.
-local function is_context_heading(line)
-    return line:match('^#%s+Row%s+%d+$') ~= nil or line:match('^#%s+New row$') ~= nil
-end
-
 ---Map a known section heading line back to its table column index.
 ---@param headers string[] Table headers in order.
 ---@param line string Editor line.
 ---@return integer|nil index Matching header index, or nil for non-section lines.
 local function known_heading_index(headers, line)
-    local label = line:match('^##%s+(.+)%s*$')
+    local label = line:match('^#%s+(.+)%s*$')
     if not label then
         return nil
     end
@@ -151,13 +128,13 @@ end
 ---@param header string Header label.
 ---@return string text Formatted section heading.
 local function section_name(header)
-    return '## ' .. header
+    return '# ' .. header
 end
 
 ---Parse editor source lines back into one table row's cell values.
 ---
 ---Behavior:
----Accepts the row-editor source format only. Unknown `##` headings remain part
+---Accepts the row-editor source format only. Unknown `#` headings remain part
 ---of the current section body; known headings must appear exactly once in table
 ---order.
 ---@param lines string[] Editor buffer lines.
@@ -165,13 +142,8 @@ end
 ---@return string[]|nil cells Parsed cell values.
 ---@return string|nil err Error message for invalid source format.
 local function parse_editor_lines(lines, headers)
-    local first_index, first_line = first_non_empty_line(lines)
-    if not first_index or not first_line or not is_context_heading(first_line) then
-        return nil, 'First non-empty line must be "# Row N" or "# New row"'
-    end
-
     local cells = {}
-    local cursor = first_index + 1
+    local cursor = 1
 
     for expected_index, header in ipairs(headers) do
         while cursor <= #lines and vim.trim(lines[cursor]) == '' do
@@ -379,8 +351,8 @@ local function open_row_editor(context, title, lines)
         silent = true,
     })
 
-    if #lines >= 3 then
-        vim.api.nvim_win_set_cursor(editor_win, { 3, 0 })
+    if #lines >= 2 then
+        vim.api.nvim_win_set_cursor(editor_win, { 2, 0 })
     end
 end
 
@@ -419,7 +391,7 @@ local function open_new_row_editor()
         mode = 'new',
     }
 
-    open_row_editor(context, 'New Markdown Table Row', build_editor_lines('# New row', table_info.headers, nil))
+    open_row_editor(context, 'New Markdown Table Row', build_editor_lines(table_info.headers, nil))
 end
 
 ---Open an editor for the Markdown table data row under the cursor.
@@ -456,8 +428,8 @@ local function open_current_row_editor()
 
     open_row_editor(
         context,
-        'Edit Markdown Table Row',
-        build_editor_lines('# Row ' .. tostring(data_row_index), table_info.headers, data_row.cells)
+        'Edit Markdown Table Row ' .. tostring(data_row_index),
+        build_editor_lines(table_info.headers, data_row.cells)
     )
 end
 
