@@ -30,6 +30,28 @@ Submit the floating editor with `:w` or `:wq`. Cancel with `q`.
 The feature is local to the current Markdown buffer and has no external file
 dependency.
 
+## Configuration
+
+`setup()` accepts an optional settings table controlling the floating editor
+size. Each option is optional and falls back to its default:
+
+| Option       | Type      | Default | Meaning                                          |
+| ------------ | --------- | ------- | ------------------------------------------------ |
+| `width`      | `integer` | `110`   | Maximum width of the floating editor, in columns. |
+| `min_height` | `integer` | `16`    | Minimum height of the floating editor, in rows.   |
+
+```lua
+require('marktable').setup({
+  width = 110,
+  min_height = 16,
+})
+```
+
+The editor never shrinks below `min_height` rows and never exceeds `width`
+columns, but both values are clamped to the available UI space so the window
+never overflows the screen. Height otherwise grows to fit the editor's source
+lines.
+
 ## Table Shape
 
 Supported tables are ordinary Markdown pipe tables:
@@ -153,7 +175,8 @@ The command module lives at:
 lua/marktable/init.lua
 ```
 
-Register it from the Neovim startup shim:
+Register it from the Neovim startup shim, optionally passing settings (see
+[Configuration](#configuration)):
 
 ```lua
 require('marktable').setup()
