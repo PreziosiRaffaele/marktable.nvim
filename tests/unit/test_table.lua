@@ -1,4 +1,4 @@
-local table_row = require('markdown_table_row.table')
+local table_row = require('marktable.table')
 local expect = MiniTest.expect
 local eq = expect.equality
 
