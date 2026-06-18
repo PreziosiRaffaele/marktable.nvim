@@ -9,6 +9,19 @@ Row-first editor for Markdown pipe-table rows.
 
 Submit with `:w` or `:wq`. Cancel with `q`.
 
+## Configuration
+
+Call `setup()` to override the floating editor size. Defaults shown:
+
+```lua
+require('marktable').setup({
+    width = 110,  -- width of the floating editor, in columns
+    height = 16,  -- height of the floating editor, in rows
+})
+```
+
+Both values are clamped to the available UI space, so the window never overflows the screen.
+
 ## Development
 
 - `make quality` runs `luacheck`, `stylua --check`, and `lua-language-server`.

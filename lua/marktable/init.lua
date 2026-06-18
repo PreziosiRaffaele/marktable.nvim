@@ -9,6 +9,21 @@ local markdown_table = require('marktable.table')
 
 local namespace = vim.api.nvim_create_namespace('marktable')
 
+---@class MarktableConfig
+---@field width integer Width of the floating editor window, in columns.
+---@field height integer Height of the floating editor window, in rows.
+
+---Default plugin settings.
+---@type MarktableConfig
+local defaults = {
+    width = 110,
+    height = 16,
+}
+
+---Active plugin settings, overridden by `setup()`.
+---@type MarktableConfig
+local config = vim.deepcopy(defaults)
+
 ---@class MarkdownTableEditorContext
 ---@field source_buf integer Markdown buffer being edited.
 ---@field source_win integer Window that launched the editor.
@@ -289,13 +304,12 @@ local function submit_editor(editor_buf, editor_win, context)
 end
 
 ---Compute floating editor dimensions for the current Neovim UI.
----@param line_count integer Number of editor source lines.
 ---@return table config Window config for `nvim_open_win`.
-local function floating_window_config(line_count)
+local function floating_window_config()
     local max_width = math.max(vim.o.columns - 4, 20)
     local max_height = math.max(vim.o.lines - 6, 8)
-    local width = math.min(96, max_width)
-    local height = math.min(math.max(line_count + 2, 12), max_height)
+    local width = math.min(config.width, max_width)
+    local height = math.min(config.height, max_height)
 
     return {
         relative = 'editor',
@@ -324,11 +338,11 @@ local function open_row_editor(context, title, lines)
     vim.api.nvim_buf_set_lines(editor_buf, 0, -1, false, lines)
     vim.bo[editor_buf].modified = false
 
-    local config = floating_window_config(#lines)
-    config.title = ' ' .. title .. ' '
-    config.title_pos = 'center'
+    local win_config = floating_window_config()
+    win_config.title = ' ' .. title .. ' '
+    win_config.title_pos = 'center'
 
-    local editor_win = vim.api.nvim_open_win(editor_buf, true, config)
+    local editor_win = vim.api.nvim_open_win(editor_buf, true, win_config)
     vim.wo[editor_win].linebreak = true
     vim.wo[editor_win].number = false
     vim.wo[editor_win].relativenumber = false
@@ -440,9 +454,13 @@ end
 ---Register Marktable editor commands.
 ---
 ---Side effects:
----Creates the `:MarktableRowNew` and `:MarktableRowEdit` user commands.
+---Merges `opts` into the active settings and creates the `:MarktableRowNew`
+---and `:MarktableRowEdit` user commands.
+---@param opts MarktableConfig|nil User settings overriding the defaults.
 ---@return nil
-function M.setup()
+function M.setup(opts)
+    config = vim.tbl_deep_extend('force', vim.deepcopy(defaults), opts or {})
+
     vim.api.nvim_create_user_command('MarktableRowNew', open_new_row_editor, {
         desc = 'Insert a new row into the Markdown table under the cursor',
     })
