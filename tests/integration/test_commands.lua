@@ -50,6 +50,20 @@ local function lines(buf)
     return vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 end
 
+local function window_title(win)
+    local title = vim.api.nvim_win_get_config(win).title
+    if type(title) == 'string' then
+        return title
+    end
+
+    local chunks = {}
+    for _, chunk in ipairs(title or {}) do
+        table.insert(chunks, chunk[1])
+    end
+
+    return table.concat(chunks)
+end
+
 local function write_editor(replacement)
     vim.api.nvim_buf_set_lines(0, 0, -1, false, replacement)
     local ok, err = pcall(vim.cmd, 'write')
@@ -70,24 +84,21 @@ T['MarkdownTableRowEdit opens the current row in a section editor'] = function()
     vim.cmd('MarkdownTableRowEdit')
 
     eq(vim.bo.buftype, 'acwrite')
+    eq(window_title(0), ' Edit Markdown Table Row 1 ')
     eq(lines(0), {
-        '# Row 1',
-        '',
-        '## Name',
+        '# Name',
         'Alpha',
         '',
-        '## Notes',
+        '# Notes',
         'one',
         'two',
     })
 
     local ok, err = write_editor({
-        '# Row 1',
-        '',
-        '## Name',
+        '# Name',
         'Beta',
         '',
-        '## Notes',
+        '# Notes',
         'updated',
         'value',
     })
@@ -111,21 +122,18 @@ T['MarkdownTableRowNew inserts after the separator when launched from the header
     vim.cmd('MarkdownTableRowNew')
 
     eq(vim.bo.buftype, 'acwrite')
+    eq(window_title(0), ' New Markdown Table Row ')
     eq(lines(0), {
-        '# New row',
+        '# Name',
         '',
-        '## Name',
-        '',
-        '## Notes',
+        '# Notes',
     })
 
     local ok, err = write_editor({
-        '# New row',
-        '',
-        '## Name',
+        '# Name',
         'Inserted',
         '',
-        '## Notes',
+        '# Notes',
         'fresh',
     })
 
@@ -148,24 +156,22 @@ T['MarkdownTableRowEdit keeps the editor open on invalid section order'] = funct
 
     vim.cmd('MarkdownTableRowEdit')
     local ok, err = write_editor({
-        '# Row 1',
-        '',
-        '## Notes',
+        '# Notes',
         'out of order',
         '',
-        '## Name',
+        '# Name',
         'Alpha',
     })
 
     eq(ok, false)
-    expect.equality(err:find('Expected section ## Name before ## Notes', 1, true) ~= nil, true)
+    expect.equality(err:find('Expected section # Name before # Notes', 1, true) ~= nil, true)
     eq(vim.bo.buftype, 'acwrite')
     eq(lines(source), {
         '| Name | Notes |',
         '| --- | --- |',
         '| Alpha | one |',
     })
-    eq(lines(0)[1], '# Row 1')
+    eq(lines(0)[1], '# Notes')
 end
 
 return T
