@@ -339,11 +339,11 @@ local function open_row_editor(context, title, lines)
     vim.api.nvim_buf_set_lines(editor_buf, 0, -1, false, lines)
     vim.bo[editor_buf].modified = false
 
-    local config = floating_window_config(#lines)
-    config.title = ' ' .. title .. ' '
-    config.title_pos = 'center'
+    local win_config = floating_window_config(#lines)
+    win_config.title = ' ' .. title .. ' '
+    win_config.title_pos = 'center'
 
-    local editor_win = vim.api.nvim_open_win(editor_buf, true, config)
+    local editor_win = vim.api.nvim_open_win(editor_buf, true, win_config)
     vim.wo[editor_win].linebreak = true
     vim.wo[editor_win].number = false
     vim.wo[editor_win].relativenumber = false
@@ -455,18 +455,18 @@ end
 ---Register Marktable editor commands.
 ---
 ---Side effects:
----Merges `opts` into the active settings and creates the `:MarktableNew` and
----`:MarktableEdit` user commands.
+---Merges `opts` into the active settings and creates the `:MarktableRowNew`
+---and `:MarktableRowEdit` user commands.
 ---@param opts MarktableConfig|nil User settings overriding the defaults.
 ---@return nil
 function M.setup(opts)
     config = vim.tbl_deep_extend('force', vim.deepcopy(defaults), opts or {})
 
-    vim.api.nvim_create_user_command('MarktableNew', open_new_row_editor, {
+    vim.api.nvim_create_user_command('MarktableRowNew', open_new_row_editor, {
         desc = 'Insert a new row into the Markdown table under the cursor',
     })
 
-    vim.api.nvim_create_user_command('MarktableEdit', open_current_row_editor, {
+    vim.api.nvim_create_user_command('MarktableRowEdit', open_current_row_editor, {
         desc = 'Edit the Markdown table data row under the cursor',
     })
 end

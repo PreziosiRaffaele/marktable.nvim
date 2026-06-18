@@ -4,8 +4,8 @@ Row-first editor for Markdown pipe-table rows.
 
 ## Commands
 
-- `:MarktableNew` opens a floating editor with one empty section per table header and inserts the generated row.
-- `:MarktableEdit` opens the data row under the cursor, shows its row number in the floating editor title, and replaces only that row.
+- `:MarktableRowNew` opens a floating editor with one empty section per table header and inserts the generated row.
+- `:MarktableRowEdit` opens the data row under the cursor, shows its row number in the floating editor title, and replaces only that row.
 
 Submit with `:w` or `:wq`. Cancel with `q`.
 

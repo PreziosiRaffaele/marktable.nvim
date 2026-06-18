@@ -18,10 +18,10 @@ any domain-specific table schema. Column headers define the editable fields.
 
 ## Commands
 
-- `:MarktableNew`: find the table under the cursor, open a floating row
+- `:MarktableRowNew`: find the table under the cursor, open a floating row
   editor titled `New Markdown Table Row` with one empty field per header, then
   insert a generated row.
-- `:MarktableEdit`: find the data row under the cursor, reconstruct an
+- `:MarktableRowEdit`: find the data row under the cursor, reconstruct an
   editable source buffer from that row, show its table data-row index in the
   `Edit Markdown Table Row N` editor title, then replace only that row.
 
@@ -141,14 +141,14 @@ From the cursor row:
 
 ## Insert Behavior
 
-For `:MarktableNew`:
+For `:MarktableRowNew`:
 
 - If the cursor is on the header or separator row, insert after the separator.
 - If the cursor is on a data row, insert below the cursor row.
 - If the submitted source is invalid, keep the editor open and notify with
   `ERROR`.
 
-For `:MarktableEdit`:
+For `:MarktableRowEdit`:
 
 - Replace only the row under the cursor.
 - If the cursor is outside a supported data row, notify with `WARN` and leave
