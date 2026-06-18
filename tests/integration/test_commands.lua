@@ -71,14 +71,14 @@ local function write_editor(replacement)
     return ok, err
 end
 
-T['MarktableEdit opens the current row in a section editor'] = function()
+T['MarktableRowEdit opens the current row in a section editor'] = function()
     local source = source_buffer({
         '| Name | Notes |',
         '| --- | --- |',
         '| Alpha | one<br>two |',
     }, 3)
 
-    vim.cmd('MarktableEdit')
+    vim.cmd('MarktableRowEdit')
 
     eq(vim.bo.buftype, 'acwrite')
     eq(window_title(0), ' Edit Markdown Table Row 1 ')
@@ -109,14 +109,14 @@ T['MarktableEdit opens the current row in a section editor'] = function()
     })
 end
 
-T['MarktableNew inserts after the separator when launched from the header'] = function()
+T['MarktableRowNew inserts after the separator when launched from the header'] = function()
     local source = source_buffer({
         '| Name | Notes |',
         '| --- | --- |',
         '| Alpha | one |',
     }, 1)
 
-    vim.cmd('MarktableNew')
+    vim.cmd('MarktableRowNew')
 
     eq(vim.bo.buftype, 'acwrite')
     eq(window_title(0), ' New Markdown Table Row ')
@@ -144,14 +144,14 @@ T['MarktableNew inserts after the separator when launched from the header'] = fu
     })
 end
 
-T['MarktableEdit keeps the editor open on invalid section order'] = function()
+T['MarktableRowEdit keeps the editor open on invalid section order'] = function()
     local source = source_buffer({
         '| Name | Notes |',
         '| --- | --- |',
         '| Alpha | one |',
     }, 3)
 
-    vim.cmd('MarktableEdit')
+    vim.cmd('MarktableRowEdit')
     local ok, err = write_editor({
         '# Notes',
         'out of order',

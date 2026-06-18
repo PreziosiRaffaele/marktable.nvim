@@ -440,14 +440,14 @@ end
 ---Register Marktable editor commands.
 ---
 ---Side effects:
----Creates the `:MarktableNew` and `:MarktableEdit` user commands.
+---Creates the `:MarktableRowNew` and `:MarktableRowEdit` user commands.
 ---@return nil
 function M.setup()
-    vim.api.nvim_create_user_command('MarktableNew', open_new_row_editor, {
+    vim.api.nvim_create_user_command('MarktableRowNew', open_new_row_editor, {
         desc = 'Insert a new row into the Markdown table under the cursor',
     })
 
-    vim.api.nvim_create_user_command('MarktableEdit', open_current_row_editor, {
+    vim.api.nvim_create_user_command('MarktableRowEdit', open_current_row_editor, {
         desc = 'Edit the Markdown table data row under the cursor',
     })
 end
