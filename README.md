@@ -2,6 +2,8 @@
 
 Row-first editor for Markdown pipe-table rows.
 
+![marktable.nvim demo](docs/demo.gif)
+
 ## Commands
 
 - `:MarktableRowNew` opens a floating editor with one empty section per table header and inserts the generated row.
@@ -34,3 +36,4 @@ Both values are clamped to the available UI space, so the window never overflows
 - `make quality` runs `luacheck`, `stylua --check`, and `lua-language-server`.
 - `make test` runs the pinned `mini.test` suite in headless Neovim.
 - `make check` runs both gates.
+- The demo GIF is regenerated with `vhs docs/demo.tape`.
