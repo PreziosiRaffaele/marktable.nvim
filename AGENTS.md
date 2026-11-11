@@ -8,6 +8,9 @@ floating, section-based Markdown buffer.
 - Plugin root: this repository.
 - Main module: `lua/marktable/init.lua`
 - Table parser/renderer: `lua/marktable/table.lua`
+- Row section format: `lua/marktable/sections.lua`
+- Read-only row view: `lua/marktable/view.lua`
+- Floating window layout: `lua/marktable/float.lua`
 - Startup shim: `plugin/marktable.lua`
 
 ## Source of Truth
@@ -34,8 +37,14 @@ When changing or removing public commands, flags, columns, or JSON fields, updat
   source-buffer anchoring, and submit/cancel behavior.
 - `lua/marktable/table.lua`: Markdown table detection, row
   parsing/rendering, validation, escaping, and unescaping.
+- `lua/marktable/sections.lua`: conversion between cell values and the
+  sectioned `# <column header>` buffer lines shared by the editor and view.
+- `lua/marktable/view.lua`: read-only row view float (peek, focus,
+  navigation, close).
+- `lua/marktable/float.lua`: size caps, placement math, window options, and
+  buffer marking shared by the editor and view floats.
 - `tests/unit/`: pure table parser/renderer tests.
-- `tests/integration/`: command and floating-editor behavior tests.
+- `tests/integration/`: command, floating-editor, and row-view behavior tests.
 - `tests/minimal_init.lua`: headless Neovim test bootstrap.
 - `docs/spec.md`: canonical product and integration spec.
 - `README.md`: user-facing quickstart and development commands.
@@ -84,9 +93,18 @@ Neovim.
 
 - `tests/unit/test_table.lua` covers Markdown table row detection, splitting,
   escaping, rendering, separator validation, and contiguous table parsing.
-- `tests/integration/test_commands.lua` drives the real commands and floating
-  editor behavior against temporary buffers.
+- `tests/integration/test_commands.lua` drives the real commands, floating
+  editor, and row view behavior against temporary buffers.
+- `tests/integration/test_view_editing.lua` drives editing from the row view
+  in a child Neovim, because the editor closes on a scheduled callback.
 - `tests/minimal_init.lua` bootstraps runtimepath and `mini.test`.
+
+Do not call `vim.wait` (or otherwise spin the event loop) in a test case that
+runs in the test process. `mini.test` schedules every case up front, so waiting
+runs later cases nested inside the current one and leaks their windows and
+buffers. Prefer synchronous behavior that tests can assert directly; when the
+behavior is inherently scheduled, test it in a child Neovim
+(`MiniTest.new_child_neovim()`), where waiting is safe.
 
 Run the full suite with:
 
