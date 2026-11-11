@@ -12,6 +12,10 @@ local M = {}
 -- Rows (or columns) taken by the single-line border, both sides together.
 local border_size = 2
 
+-- Narrowest width for a content-fitted float, so short rows still get room to
+-- type without the window resizing.
+local comfortable_width = 60
+
 -- Buffer variable set on every editor and view buffer.
 local plugin_buffer_var = 'marktable_float'
 
@@ -48,13 +52,15 @@ function M.max_col(width)
     return math.max(vim.o.columns - width - border_size, 0)
 end
 
----Width that fits lines and a title, within a cap.
+---Width that fits lines and a title, within a cap, but never narrower than a
+---comfortable minimum (or the cap, when that is smaller).
 ---@param lines string[] Buffer lines.
 ---@param title string Window title.
 ---@param max_width integer Width cap.
 ---@return integer width Content width, in columns, at least 1.
 function M.content_width(lines, title, max_width)
-    local width = vim.fn.strdisplaywidth(title)
+    local width = comfortable_width
+    width = math.max(width, vim.fn.strdisplaywidth(title))
     for _, line in ipairs(lines) do
         width = math.max(width, vim.fn.strdisplaywidth(line))
     end

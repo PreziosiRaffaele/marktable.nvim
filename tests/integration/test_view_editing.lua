@@ -176,23 +176,41 @@ local function win_size(win)
     return { anchor = config.anchor, row = config.row, col = config.col, width = config.width, height = config.height }
 end
 
-T['the editor opens at the view size and grows to fit what is typed'] = function()
+T['the editor opens at the view size and keeps it for short edits'] = function()
     child.o.columns = 80
     focus_view()
     local view = win_size(0)
+    eq(view.width, 60)
 
     child.type_keys('e')
     eq(win_size(0), view)
 
-    child.type_keys('A', ' and a much longer note that needs a wider window', '<Esc>')
-    local grown = win_size(0)
-    eq(grown.width > view.width, true)
-    eq(grown.width <= 76, true)
-    eq({ grown.anchor, grown.row }, { view.anchor, view.row })
+    -- A short row has room to type without any resize.
+    child.type_keys('A', ' and a short note', '<Esc>')
+    eq(win_size(0), view)
+end
 
-    -- Deleting text never shrinks it below the width it opened with.
+T['the editor widens to its cap in one step when a line no longer fits'] = function()
+    child.o.columns = 80
+    focus_view()
+    local view = win_size(0)
+    child.type_keys('e', 'A')
+
+    -- Type one character at a time and record every width the editor takes.
+    local widths = {}
+    for char in ('x'):rep(70):gmatch('.') do
+        child.type_keys(char)
+        widths[child.api.nvim_win_get_config(0).width] = true
+    end
+    child.type_keys('<Esc>')
+
+    -- Only the opening width and the cap (80 - 4) ever appear.
+    eq(widths, { [view.width] = true, [76] = true })
+    eq({ win_size(0).anchor, win_size(0).row }, { view.anchor, view.row })
+
+    -- Deleting text never shrinks it.
     child.type_keys('S', '<Esc>')
-    eq(win_size(0).width >= view.width, true)
+    eq(win_size(0).width, 76)
 end
 
 T['MarktableRowEdit keeps the fixed configured size'] = function()

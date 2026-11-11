@@ -200,9 +200,10 @@ end
 ---Keep an anchored editor sized to its content while it is edited.
 ---
 ---Behavior:
----Grows up to the caps and never narrower than `min_width`, so the editor
----starts exactly at the view's size and does not flicker while deleting. Moves
----left only as far as needed to stay on screen.
+---Starts at `min_width` (the view's width). When a line no longer fits, the
+---width jumps straight to the cap in one step instead of following the text
+---column by column, and it never shrinks. The height follows the soft-wrapped
+---content. Moves left only as far as needed to stay on screen.
 ---@param editor_win integer Editor window handle.
 ---@param editor_buf integer Editor buffer handle.
 ---@param position MarktableFloatCorner Anchor corner the editor opened at.
@@ -214,13 +215,17 @@ local function fit_editor_to_content(editor_win, editor_buf, position, min_width
     local title = vim.api.nvim_win_get_config(editor_win).title
     local title_text = type(title) == 'table' and title[1][1] or ''
 
+    local width = math.min(min_width, max_width)
+
     local function fit()
         if not vim.api.nvim_win_is_valid(editor_win) then
             return
         end
 
         local lines = vim.api.nvim_buf_get_lines(editor_buf, 0, -1, false)
-        local width = math.max(float.content_width(lines, title_text, max_width), math.min(min_width, max_width))
+        if float.content_width(lines, title_text, max_width) > width then
+            width = max_width
+        end
         vim.api.nvim_win_set_config(editor_win, {
             relative = 'editor',
             anchor = position.anchor,
