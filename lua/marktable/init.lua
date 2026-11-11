@@ -6,6 +6,7 @@
 ---`marktable.sections`, and the read-only view to `marktable.view`.
 local M = {}
 
+local float = require('marktable.float')
 local markdown_table = require('marktable.table')
 local row_view = require('marktable.view')
 local sections = require('marktable.sections')
@@ -34,16 +35,12 @@ local config = vim.deepcopy(defaults)
 ---@field mark_id integer Extmark tracking the replacement or insertion anchor.
 ---@field mode 'edit'|'new' Submit behavior.
 
----@class MarktableEditorPosition
----@field anchor 'NW'|'SW' Window corner placed at `row`/`col`.
----@field row integer Editor-relative 0-based row of the anchor corner.
----@field col integer Editor-relative 0-based column of the anchor corner.
-
 ---@class MarktableEditorOpenOpts
----@field position MarktableEditorPosition|nil Open here instead of centered.
+---@field position MarktableFloatCorner|nil Open here instead of centered.
 ---@field cursor integer[]|nil Initial `{ row, col }` cursor in the editor buffer.
----@field on_close fun(cursor: integer[])|nil Called with the last editor cursor
----after the editor window closes, however it was closed.
+---@field on_close fun(cursor: integer[], line: integer|nil)|nil Called after the
+---editor window closes, however it was closed, with the last editor cursor and
+---the 1-based source line the anchor tracked (nil when it is gone).
 
 -- ============================================================================
 -- Local helpers
@@ -125,7 +122,6 @@ local function apply_row(context, cells)
         vim.api.nvim_buf_set_lines(context.source_buf, anchor_line + 1, anchor_line + 1, false, { rendered_row })
     end
 
-    pcall(vim.api.nvim_buf_del_extmark, context.source_buf, namespace, context.mark_id)
     return true, nil
 end
 
@@ -162,31 +158,22 @@ end
 ---Centers the editor by default. With `position`, keeps that anchor corner,
 ---shifts left only as needed to fit the width, and caps the height to the room
 ---on the anchored side.
----@param position MarktableEditorPosition|nil Anchor corner to open at.
+---@param position MarktableFloatCorner|nil Anchor corner to open at.
 ---@return table config Window config for `nvim_open_win`.
 local function floating_window_config(position)
-    local max_width = math.max(vim.o.columns - 4, 20)
-    local max_height = math.max(vim.o.lines - 6, 8)
-    local width = math.min(config.width, max_width)
-    local height = math.min(config.height, max_height)
-
-    local win_config = {
-        relative = 'editor',
-        width = width,
-        height = height,
-        row = math.max(math.floor((vim.o.lines - height) / 2) - 1, 0),
-        col = math.max(math.floor((vim.o.columns - width) / 2), 0),
-        style = 'minimal',
-        border = 'single',
-    }
+    local width, height = float.size_caps(config)
+    local win_config = float.base_config()
+    win_config.width = width
+    win_config.height = height
 
     if position then
-        -- Both sides reserve two rows for the border.
-        local room = position.anchor == 'SW' and position.row - 2 or vim.o.lines - vim.o.cmdheight - position.row - 2
         win_config.anchor = position.anchor
         win_config.row = position.row
-        win_config.col = math.max(math.min(position.col, vim.o.columns - width - 2), 0)
-        win_config.height = math.max(math.min(height, room), 1)
+        win_config.col = math.min(position.col, float.max_col(width))
+        win_config.height = math.max(math.min(height, float.room(position.anchor, position.row)), 1)
+    else
+        win_config.row = math.max(math.floor((vim.o.lines - height) / 2) - 1, 0)
+        win_config.col = math.max(math.floor((vim.o.columns - width) / 2), 0)
     end
 
     return win_config
@@ -213,14 +200,9 @@ local function open_row_editor(context, title, lines, opts)
 
     local win_config = floating_window_config(opts.position)
     win_config.title = ' ' .. title .. ' '
-    win_config.title_pos = 'center'
 
     local editor_win = vim.api.nvim_open_win(editor_buf, true, win_config)
-    vim.wo[editor_win].linebreak = true
-    vim.wo[editor_win].number = false
-    vim.wo[editor_win].relativenumber = false
-    vim.wo[editor_win].signcolumn = 'no'
-    vim.wo[editor_win].wrap = true
+    float.set_window_options(editor_win)
 
     vim.api.nvim_create_autocmd('BufWriteCmd', {
         buffer = editor_buf,
@@ -238,20 +220,26 @@ local function open_row_editor(context, title, lines, opts)
         silent = true,
     })
 
+    -- However the editor closes, drop its anchor extmark and report back.
     local on_close = opts.on_close
-    if on_close then
-        vim.api.nvim_create_autocmd('WinClosed', {
-            pattern = tostring(editor_win),
-            once = true,
-            callback = function()
-                local ok, cursor = pcall(vim.api.nvim_win_get_cursor, editor_win)
+    vim.api.nvim_create_autocmd('WinClosed', {
+        pattern = tostring(editor_win),
+        once = true,
+        callback = function()
+            local ok, cursor = pcall(vim.api.nvim_win_get_cursor, editor_win)
+            local anchor_line = get_anchor_line(context)
+            if vim.api.nvim_buf_is_valid(context.source_buf) then
+                pcall(vim.api.nvim_buf_del_extmark, context.source_buf, namespace, context.mark_id)
+            end
+
+            if on_close then
                 -- Window layout changes are not allowed inside WinClosed.
                 vim.schedule(function()
-                    on_close(ok and cursor or { 1, 0 })
+                    on_close(ok and cursor or { 1, 0 }, anchor_line and anchor_line + 1)
                 end)
-            end,
-        })
-    end
+            end
+        end,
+    })
 
     if opts.cursor then
         vim.api.nvim_win_set_cursor(editor_win, { math.min(opts.cursor[1], #lines), opts.cursor[2] })

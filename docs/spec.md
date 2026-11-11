@@ -152,8 +152,8 @@ stays in the source window.
 - Width fits the longest line and the title; height fits the soft-wrapped
   content. Both are capped by the configured `width` and `height` and by the
   available UI space.
-- The view closes when, in the source buffer, the cursor moves, insert mode
-  starts, or the buffer is left or hidden.
+- The view closes when, in the source buffer, the cursor moves, the text
+  changes, insert mode starts, or the buffer is left or hidden.
 - Only one view is open at a time; opening a new one closes the previous one.
 
 ### Browse
@@ -206,11 +206,12 @@ and saving and canceling follow the editor rules.
 
 When an editor opened from the view closes, however it closes (`:w`, `:wq`,
 `q`, `:q!`), the view reopens focused at the same position, showing the current
-content of the same row, with the cursor where the editor left it. Editing
-several rows is then a loop of `]r`, an insert key, the edit, and `:w`; `q`
-leaves the view. If the row is no longer a supported data row, notify with
-`WARN` and stay in the source window. An editor opened with
-`:MarktableRowEdit` still closes back to the table.
+content of the edited row, with the cursor where the editor left it. The row is
+tracked by the editor's anchor, so it stays correct when lines above the table
+change while the editor is open. Editing several rows is then a loop of `]r`,
+an insert key, the edit, and `:w`; `q` leaves the view. If the row is no longer
+a supported data row, notify with `WARN` and stay in the source window. An
+editor opened with `:MarktableRowEdit` still closes back to the table.
 
 ## Row Detection
 
@@ -272,6 +273,15 @@ lua/marktable/view.lua
 
 It shows, focuses, navigates, and closes the row view float.
 
+The floating window layout module lives at:
+
+```text
+lua/marktable/float.lua
+```
+
+It sizes, places, and styles the editor and view floats, so both use the same
+size caps, border math, and window options.
+
 The command module lives at:
 
 ```text
@@ -293,14 +303,18 @@ for side-effecting functions.
 
 ## Edge Cases
 
-- Canceling the editor leaves the buffer unchanged.
+- Canceling the editor leaves the buffer unchanged, including its anchor
+  extmark, which is removed whenever the editor closes.
 - Header or separator edit attempts warn and do not modify the buffer.
 - Tables with duplicate or empty headers warn and do not modify the buffer.
 - Malformed rows warn and do not modify the buffer.
 - Empty submitted fields render as empty cells.
 - `:MarktableRowView` on the header or separator row, outside a table, or on a
   malformed table warns and opens nothing. Run from inside the view buffer, it
-  warns the same way and leaves the open view unchanged.
+  warns and leaves the open view unchanged, even when the view's text itself
+  looks like a table.
+- If the row is no longer a supported data row when `e` or an insert key is
+  pressed, the view warns and stays open instead of opening the editor.
 - A table with a single data row can be viewed; `]r` and `[r` do nothing.
 - Viewing never modifies the source buffer.
 

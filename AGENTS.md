@@ -10,6 +10,7 @@ floating, section-based Markdown buffer.
 - Table parser/renderer: `lua/marktable/table.lua`
 - Row section format: `lua/marktable/sections.lua`
 - Read-only row view: `lua/marktable/view.lua`
+- Floating window layout: `lua/marktable/float.lua`
 - Startup shim: `plugin/marktable.lua`
 
 ## Source of Truth
@@ -40,6 +41,8 @@ When changing or removing public commands, flags, columns, or JSON fields, updat
   sectioned `# <column header>` buffer lines shared by the editor and view.
 - `lua/marktable/view.lua`: read-only row view float (peek, focus,
   navigation, close).
+- `lua/marktable/float.lua`: size caps, placement math, and window options
+  shared by the editor and view floats.
 - `tests/unit/`: pure table parser/renderer tests.
 - `tests/integration/`: command, floating-editor, and row-view behavior tests.
 - `tests/minimal_init.lua`: headless Neovim test bootstrap.

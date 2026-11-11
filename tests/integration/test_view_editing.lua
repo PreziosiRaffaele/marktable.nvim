@@ -111,6 +111,34 @@ T['canceling the editor returns to the view unchanged'] = function()
     end
 end
 
+T['the view returns to the edited row when lines above the table change'] = function()
+    child.api.nvim_win_set_cursor(0, { 4, 0 })
+    focus_view()
+    child.type_keys('A', '!', '<Esc>')
+
+    -- Lines appear above the table while the editor is open.
+    child.lua([[vim.api.nvim_buf_set_lines(1, 0, 0, false, { 'intro', '' })]])
+    child.type_keys(':w<CR>')
+
+    eq(wait_for_view(), true)
+    eq(state().title, ' Markdown Table Row 2/3 ')
+    eq(child.lua_get('vim.api.nvim_buf_get_lines(0, 1, 2, false)'), { 'Beta!' })
+    eq(source()[6], '| Beta! | two |')
+    eq(child.lua_get('vim.api.nvim_win_get_cursor(vim.fn.win_getid(1))[1]'), 6)
+end
+
+T['saving from the view leaves no anchor extmarks behind'] = function()
+    focus_view()
+    child.type_keys('A', '!', '<Esc>', ':w<CR>')
+    eq(wait_for_view(), true)
+    child.type_keys(']r', 'e', 'q')
+    eq(wait_for_view(), true)
+
+    local count =
+        child.lua_get([[#vim.api.nvim_buf_get_extmarks(1, vim.api.nvim_get_namespaces().marktable, 0, -1, {})]])
+    eq(count, 0)
+end
+
 T['MarktableRowEdit still closes back to the table'] = function()
     child.cmd('MarktableRowEdit')
     child.type_keys('A', ' direct', '<Esc>', ':w<CR>')

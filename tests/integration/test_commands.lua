@@ -196,6 +196,13 @@ local function press(keys)
     vim.api.nvim_feedkeys(vim.keycode(keys), 'mx', false)
 end
 
+local function focus_view_on_row(source)
+    eq(vim.api.nvim_get_current_buf(), source)
+    vim.cmd('MarktableRowView')
+    vim.cmd('MarktableRowView')
+    return vim.api.nvim_get_current_win()
+end
+
 local function capture_warnings(callback)
     local messages = {}
     local original = vim.notify
@@ -417,6 +424,78 @@ T['MarktableRowView inside the view warns and keeps the view open'] = function()
     eq(messages[1].level, vim.log.levels.WARN)
     eq(vim.api.nvim_win_is_valid(view_win), true)
     eq(vim.api.nvim_get_current_win(), view_win)
+end
+
+T['MarktableRowView inside the view warns even when the view text is a table'] = function()
+    -- The Notes cell holds a whole escaped table, so the view shows real
+    -- table lines that could be mistaken for a source table.
+    source_buffer({
+        '| Name | Notes |',
+        '| --- | --- |',
+        '| T | \\| h \\| g \\|<br>\\| --- \\| --- \\|<br>\\| 1 \\| 2 \\| |',
+    }, 3)
+
+    vim.cmd('MarktableRowView')
+    vim.cmd('MarktableRowView')
+    local view_win = vim.api.nvim_get_current_win()
+    eq(lines(0)[7], '| 1 | 2 |')
+    vim.api.nvim_win_set_cursor(0, { 7, 0 })
+
+    local messages = capture_warnings(function()
+        vim.cmd('MarktableRowView')
+    end)
+
+    eq(#messages, 1)
+    eq(messages[1].message, 'Run :MarktableRowView from the Markdown buffer, not the row view')
+    eq(vim.api.nvim_get_current_win(), view_win)
+    eq(#floating_windows(), 1)
+end
+
+T['MarktableRowView peek closes when the source text changes'] = function()
+    local source = source_buffer(view_table, 3)
+
+    vim.cmd('MarktableRowView')
+
+    -- A TextChanged for a change made before the peek opened keeps it open.
+    vim.api.nvim_exec_autocmds('TextChanged', { buffer = source })
+    eq(#floating_windows(), 1)
+
+    vim.api.nvim_buf_set_text(source, 2, 2, 2, 7, { '' })
+    vim.api.nvim_exec_autocmds('TextChanged', { buffer = source })
+    eq(#floating_windows(), 0)
+end
+
+T['MarktableRowView edit keys keep the view open when the row is no longer valid'] = function()
+    local source = source_buffer(view_table, 3)
+    local view_win = focus_view_on_row(source)
+
+    -- Break the table while the view is open: the row loses a cell.
+    vim.api.nvim_buf_set_lines(source, 2, 3, false, { '| Alpha |' })
+    local messages = capture_warnings(function()
+        press('i')
+    end)
+
+    eq(#messages, 1)
+    eq(messages[1].level, vim.log.levels.WARN)
+    eq(vim.api.nvim_get_current_win(), view_win)
+    eq(window_title(0), ' Markdown Table Row 1/3 ')
+    eq(#floating_windows(), 1)
+end
+
+T['Canceling the editor removes its anchor extmark'] = function()
+    local source = source_buffer(view_table, 3)
+    local namespace = vim.api.nvim_get_namespaces().marktable
+
+    vim.cmd('MarktableRowEdit')
+    eq(#vim.api.nvim_buf_get_extmarks(source, namespace, 0, -1, {}), 1)
+    press('q')
+    eq(#vim.api.nvim_buf_get_extmarks(source, namespace, 0, -1, {}), 0)
+
+    local view_win = focus_view_on_row(source)
+    press('e')
+    press('q')
+    eq(#vim.api.nvim_buf_get_extmarks(source, namespace, 0, -1, {}), 0)
+    eq(vim.api.nvim_win_is_valid(view_win), false)
 end
 
 return T

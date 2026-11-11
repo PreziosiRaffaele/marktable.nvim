@@ -4,6 +4,7 @@
 ---Show, focus, navigate, and close the read-only row view float.
 local M = {}
 
+local float = require('marktable.float')
 local markdown_table = require('marktable.table')
 local sections = require('marktable.sections')
 
@@ -13,10 +14,11 @@ local augroup_name = 'marktable_row_view'
 ---@field source_buf integer Markdown buffer the shown row comes from.
 ---@field source_win integer Window that opened the view.
 ---@field source_cursor integer[] Source cursor position when the peek opened.
+---@field source_tick integer Source `changedtick` when the peek opened.
 ---@field buf integer View buffer handle.
 ---@field win integer View window handle.
 ---@field line integer 1-based source line of the shown row.
----@field corner MarktableViewCorner Anchor corner of the view window.
+---@field corner MarktableFloatCorner Anchor corner of the view window.
 ---@field max_width integer Width cap.
 ---@field max_height integer Height cap for the chosen placement.
 ---@field open_editor fun(opts: MarktableEditorOpenOpts): boolean Opens the row editor for the source cursor row.
@@ -91,11 +93,6 @@ local function estimated_height(lines, width)
     return height
 end
 
----@class MarktableViewCorner
----@field anchor 'NW'|'SW' Window corner placed at `row`/`col`.
----@field row integer Editor-relative 0-based row of the anchor corner.
----@field col integer Editor-relative 0-based column of the anchor corner.
-
 ---Place the view below the source cursor, or above it when there is not enough room below.
 ---
 ---Behavior:
@@ -104,22 +101,22 @@ end
 ---@param source_win integer Source window handle.
 ---@param height integer Estimated content height.
 ---@param height_cap integer Configured height cap.
----@return MarktableViewCorner corner Anchor corner for the view.
+---@return MarktableFloatCorner corner Anchor corner for the view.
 ---@return integer max_height Height cap for the chosen side.
 local function placement(source_win, height, height_cap)
     local cursor = vim.api.nvim_win_get_cursor(source_win)
     local screen = vim.fn.screenpos(source_win, cursor[1], cursor[2] + 1)
-    local cursor_row = math.max(screen.row, 1)
-    -- Both sides reserve two rows for the border.
-    local room_below = vim.o.lines - vim.o.cmdheight - cursor_row - 2
-    local room_above = cursor_row - 3
-    local col = math.max(screen.col - 1, 0)
+    -- `screen.row` is 1-based, so it is also the 0-based row below the cursor.
+    local below = { anchor = 'NW', row = math.max(screen.row, 1), col = math.max(screen.col - 1, 0) }
+    local above = { anchor = 'SW', row = below.row - 1, col = below.col }
+    local room_below = float.room(below.anchor, below.row)
+    local room_above = float.room(above.anchor, above.row)
 
     if room_below >= math.min(height, height_cap) or room_below >= room_above then
-        return { anchor = 'NW', row = cursor_row, col = col }, math.max(math.min(height_cap, room_below), 1)
+        return below, math.max(math.min(height_cap, room_below), 1)
     end
 
-    return { anchor = 'SW', row = cursor_row - 1, col = col }, math.max(math.min(height_cap, room_above), 1)
+    return above, math.max(math.min(height_cap, room_above), 1)
 end
 
 ---Cursor on the first section value, where editing usually starts.
@@ -236,21 +233,28 @@ local function edit_shown_row(view, insert_key)
         return
     end
 
-    local cursor = vim.api.nvim_win_get_cursor(view.win)
-
-    close_view(view, true)
+    -- Check everything the editor needs before closing the view, so a failure
+    -- leaves the view open instead of dropping it.
     if not source_window_ready(view) then
         warn('Source window is no longer available')
         return
     end
 
+    local table_info, _, err = markdown_table.find_data_row(view.source_buf, view.line)
+    if not table_info then
+        warn(err or 'Markdown table row is no longer available')
+        return
+    end
+
+    local cursor = vim.api.nvim_win_get_cursor(view.win)
+    close_view(view, true)
     vim.api.nvim_set_current_win(view.source_win)
     vim.api.nvim_win_set_cursor(view.source_win, { view.line, 0 })
     local opened = view.open_editor({
         position = view.corner,
         cursor = cursor,
-        on_close = function(editor_cursor)
-            return_to_view(view, editor_cursor)
+        on_close = function(editor_cursor, line)
+            return_to_view(view, editor_cursor, line)
         end,
     })
     if opened and insert_key then
@@ -315,6 +319,17 @@ local function set_peek_autocmds(view)
         end,
     })
 
+    vim.api.nvim_create_autocmd('TextChanged', {
+        group = group,
+        buffer = view.source_buf,
+        callback = function()
+            -- Same as CursorMoved: ignore a change made before the peek opened.
+            if vim.b[view.source_buf].changedtick ~= view.source_tick then
+                close_view(view, false)
+            end
+        end,
+    })
+
     vim.api.nvim_create_autocmd({ 'InsertEnter', 'BufLeave', 'BufHidden' }, {
         group = group,
         buffer = view.source_buf,
@@ -346,9 +361,10 @@ end
 ---@field line integer 1-based source line of the row to show.
 ---@field table_info MarkdownTable Freshly parsed source table.
 ---@field index integer 1-based data-row index to show.
----@field corner MarktableViewCorner Anchor corner of the view window.
 ---@field max_width integer Width cap.
----@field max_height integer Height cap for the anchored side.
+---@field height_cap integer Configured height cap.
+---@field corner MarktableFloatCorner|nil Where to open; nil places it at the source cursor.
+---@field max_height integer|nil Height cap that comes with `corner`.
 ---@field cursor integer[]|nil View cursor; defaults to the first value line.
 ---@field open_editor fun(opts: MarktableEditorOpenOpts): boolean Opens the row editor for the source cursor row.
 
@@ -364,6 +380,11 @@ local function create_view(spec)
     local title = view_title(spec.index, #spec.table_info.rows)
     local width = content_width(lines, title, spec.max_width)
 
+    local corner, max_height = spec.corner, spec.max_height
+    if not corner or not max_height then
+        corner, max_height = placement(spec.source_win, estimated_height(lines, width), spec.height_cap)
+    end
+
     local buf = vim.api.nvim_create_buf(false, true)
     vim.bo[buf].buftype = 'nofile'
     vim.bo[buf].bufhidden = 'wipe'
@@ -371,36 +392,30 @@ local function create_view(spec)
     set_view_lines(buf, lines)
     vim.bo[buf].filetype = 'markdown'
 
-    local win = vim.api.nvim_open_win(buf, false, {
-        relative = 'editor',
-        anchor = spec.corner.anchor,
-        row = spec.corner.row,
-        col = spec.corner.col,
-        width = width,
-        height = math.min(estimated_height(lines, width), spec.max_height),
-        style = 'minimal',
-        border = 'single',
-        focusable = true,
-        title = title,
-        title_pos = 'center',
-    })
-    vim.wo[win].linebreak = true
-    vim.wo[win].number = false
-    vim.wo[win].relativenumber = false
-    vim.wo[win].signcolumn = 'no'
-    vim.wo[win].wrap = true
+    local win_config = float.base_config()
+    win_config.anchor = corner.anchor
+    win_config.row = corner.row
+    win_config.col = corner.col
+    win_config.width = width
+    -- fit_height sets the real height once the window can measure its text.
+    win_config.height = 1
+    win_config.focusable = true
+    win_config.title = title
+    local win = vim.api.nvim_open_win(buf, false, win_config)
+    float.set_window_options(win)
 
     ---@type MarktableRowView
     local view = {
         source_buf = spec.source_buf,
         source_win = spec.source_win,
         source_cursor = vim.api.nvim_win_get_cursor(spec.source_win),
+        source_tick = vim.b[spec.source_buf].changedtick,
         buf = buf,
         win = win,
         line = spec.line,
-        corner = spec.corner,
+        corner = corner,
         max_width = spec.max_width,
-        max_height = spec.max_height,
+        max_height = max_height,
         open_editor = spec.open_editor,
     }
     current = view
@@ -427,21 +442,15 @@ local function open_peek(config, open_editor)
         return
     end
 
-    local lines = sections.build_lines(table_info.headers, table_info.rows[index].cells)
-    local max_width = math.min(config.width, math.max(vim.o.columns - 4, 20))
-    local height_cap = math.min(config.height, math.max(vim.o.lines - 6, 8))
-    local width = content_width(lines, view_title(index, #table_info.rows), max_width)
-    local corner, max_height = placement(source_win, estimated_height(lines, width), height_cap)
-
+    local max_width, height_cap = float.size_caps(config)
     local view = create_view({
         source_buf = source_buf,
         source_win = source_win,
         line = line,
         table_info = table_info,
         index = index,
-        corner = corner,
         max_width = max_width,
-        max_height = max_height,
+        height_cap = height_cap,
         open_editor = open_editor,
     })
     set_peek_autocmds(view)
@@ -450,33 +459,37 @@ end
 ---Reopen a closed view, focused, after the editor launched from it closes.
 ---
 ---Behavior:
----Shows the current content of the row the view was on, at the same position,
----with the cursor where the editor left it. Warns and stays in the source
----window when the row is no longer a supported data row.
+---Shows the current content of the edited row, at the same position, with the
+---cursor where the editor left it. The row is the one the editor's anchor
+---tracked, so it is still right when lines above the table changed meanwhile.
+---Warns and stays in the source window when it is no longer a data row.
 ---@param previous MarktableRowView The view that launched the editor.
 ---@param cursor integer[] Last editor cursor.
+---@param line integer|nil 1-based source line of the edited row, if still known.
 ---@return nil
-return_to_view = function(previous, cursor)
+return_to_view = function(previous, cursor, line)
     if not source_window_ready(previous) then
         return
     end
 
+    line = line or previous.line
     vim.api.nvim_set_current_win(previous.source_win)
-    local table_info, index, err = markdown_table.find_data_row(previous.source_buf, previous.line)
+    local table_info, index, err = markdown_table.find_data_row(previous.source_buf, line)
     if not table_info or not index then
         warn(err or 'Markdown table row is no longer available')
         return
     end
 
-    vim.api.nvim_win_set_cursor(previous.source_win, { previous.line, 0 })
+    vim.api.nvim_win_set_cursor(previous.source_win, { line, 0 })
     local view = create_view({
         source_buf = previous.source_buf,
         source_win = previous.source_win,
-        line = previous.line,
+        line = line,
         table_info = table_info,
         index = index,
         corner = previous.corner,
         max_width = previous.max_width,
+        height_cap = previous.max_height,
         max_height = previous.max_height,
         cursor = cursor,
         open_editor = previous.open_editor,
@@ -493,12 +506,19 @@ end
 ---Behavior:
 ---When a peek for the current buffer is open and unfocused, focus it for
 ---browsing. Otherwise open a new peek, replacing any previous view. Warns and
----keeps any open view when the cursor is not on a supported data row.
+---keeps any open view when run from the view itself or when the cursor is not
+---on a supported data row.
 ---@param config MarktableConfig Active plugin settings.
 ---@param open_editor fun(opts: MarktableEditorOpenOpts): boolean Opens the row editor for the source cursor row.
 ---@return nil
 function M.open_or_focus(config, open_editor)
     local view = current
+    -- The view's own text can look like a table; never treat it as a source.
+    if view and vim.api.nvim_get_current_buf() == view.buf then
+        warn('Run :MarktableRowView from the Markdown buffer, not the row view')
+        return
+    end
+
     if
         view
         and vim.api.nvim_win_is_valid(view.win)
