@@ -37,6 +37,8 @@ local config = vim.deepcopy(defaults)
 
 ---@class MarktableEditorOpenOpts
 ---@field position MarktableFloatCorner|nil Open here instead of centered.
+---@field size { width: integer, height: integer }|nil With `position`: start at
+---this size and fit the content while typing, instead of the configured size.
 ---@field cursor integer[]|nil Initial `{ row, col }` cursor in the editor buffer.
 ---@field on_close fun(cursor: integer[], line: integer|nil)|nil Called after the
 ---editor window closes, however it was closed, with the last editor cursor and
@@ -174,6 +176,7 @@ end
 ---@param position MarktableFloatCorner|nil Anchor corner to open at.
 ---@param line_count integer Number of editor content lines.
 ---@return table config Window config for `nvim_open_win`.
+---@return integer|nil max_height Height cap when anchored at `position`.
 local function floating_window_config(position, line_count)
     local width, height = float.size_caps(config)
     local win_config = float.base_config()
@@ -186,12 +189,53 @@ local function floating_window_config(position, line_count)
         win_config.row = position.row
         win_config.col = math.min(position.col, float.max_col(width))
         win_config.height = math.min(height, room)
-    else
-        win_config.row = math.max(math.floor((vim.o.lines - height) / 2) - 1, 0)
-        win_config.col = math.max(math.floor((vim.o.columns - width) / 2), 0)
+        return win_config, win_config.height
     end
 
-    return win_config
+    win_config.row = math.max(math.floor((vim.o.lines - height) / 2) - 1, 0)
+    win_config.col = math.max(math.floor((vim.o.columns - width) / 2), 0)
+    return win_config, nil
+end
+
+---Keep an anchored editor sized to its content while it is edited.
+---
+---Behavior:
+---Grows up to the caps and never narrower than `min_width`, so the editor
+---starts exactly at the view's size and does not flicker while deleting. Moves
+---left only as far as needed to stay on screen.
+---@param editor_win integer Editor window handle.
+---@param editor_buf integer Editor buffer handle.
+---@param position MarktableFloatCorner Anchor corner the editor opened at.
+---@param min_width integer Smallest width, in columns.
+---@param max_height integer Height cap for the anchored side.
+---@return nil
+local function fit_editor_to_content(editor_win, editor_buf, position, min_width, max_height)
+    local max_width = float.size_caps(config)
+    local title = vim.api.nvim_win_get_config(editor_win).title
+    local title_text = type(title) == 'table' and title[1][1] or ''
+
+    local function fit()
+        if not vim.api.nvim_win_is_valid(editor_win) then
+            return
+        end
+
+        local lines = vim.api.nvim_buf_get_lines(editor_buf, 0, -1, false)
+        local width = math.max(float.content_width(lines, title_text, max_width), math.min(min_width, max_width))
+        vim.api.nvim_win_set_config(editor_win, {
+            relative = 'editor',
+            anchor = position.anchor,
+            row = position.row,
+            col = math.min(position.col, float.max_col(width)),
+            width = width,
+        })
+        float.fit_height(editor_win, max_height)
+    end
+
+    fit()
+    vim.api.nvim_create_autocmd({ 'TextChanged', 'TextChangedI' }, {
+        buffer = editor_buf,
+        callback = fit,
+    })
 end
 
 ---Open the floating row editor for a prepared context.
@@ -214,11 +258,14 @@ local function open_row_editor(context, title, lines, opts)
     vim.api.nvim_buf_set_lines(editor_buf, 0, -1, false, lines)
     vim.bo[editor_buf].modified = false
 
-    local win_config = floating_window_config(opts.position, #lines)
+    local win_config, anchored_height = floating_window_config(opts.position, #lines)
     win_config.title = ' ' .. title .. ' '
 
     local editor_win = vim.api.nvim_open_win(editor_buf, true, win_config)
     float.set_window_options(editor_win)
+    if opts.position and opts.size and anchored_height then
+        fit_editor_to_content(editor_win, editor_buf, opts.position, opts.size.width, anchored_height)
+    end
 
     vim.api.nvim_create_autocmd('BufWriteCmd', {
         buffer = editor_buf,

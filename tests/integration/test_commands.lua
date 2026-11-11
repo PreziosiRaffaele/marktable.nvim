@@ -230,7 +230,7 @@ T['MarktableRowView peeks without taking focus'] = function()
     eq(#wins, 1)
 
     local view_buf = vim.api.nvim_win_get_buf(wins[1])
-    eq(window_title(wins[1]), ' Markdown Table Row 1/3 ')
+    eq(window_title(wins[1]), ' View Markdown Table Row 1/3 ')
     eq(lines(view_buf), {
         '# Name',
         'Alpha',
@@ -246,7 +246,7 @@ T['MarktableRowView peeks without taking focus'] = function()
 
     -- Sized to content: the title is the widest line, one row per line.
     local win_config = vim.api.nvim_win_get_config(wins[1])
-    eq(win_config.width, #' Markdown Table Row 1/3 ')
+    eq(win_config.width, #' View Markdown Table Row 1/3 ')
     eq(win_config.height, 6)
 end
 
@@ -281,10 +281,10 @@ T['MarktableRowView navigates rows and stops at the bounds'] = function()
     local view_win = vim.api.nvim_get_current_win()
 
     press('[r')
-    eq(window_title(view_win), ' Markdown Table Row 1/3 ')
+    eq(window_title(view_win), ' View Markdown Table Row 1/3 ')
 
     press(']r')
-    eq(window_title(view_win), ' Markdown Table Row 2/3 ')
+    eq(window_title(view_win), ' View Markdown Table Row 2/3 ')
     eq(lines(0), {
         '# Name',
         'Beta',
@@ -296,12 +296,12 @@ T['MarktableRowView navigates rows and stops at the bounds'] = function()
 
     press(']r')
     press(']r')
-    eq(window_title(view_win), ' Markdown Table Row 3/3 ')
+    eq(window_title(view_win), ' View Markdown Table Row 3/3 ')
     eq(lines(0)[2], 'Gamma')
     eq(vim.api.nvim_win_get_cursor(source_win), { 5, 0 })
 
     press('[r')
-    eq(window_title(view_win), ' Markdown Table Row 2/3 ')
+    eq(window_title(view_win), ' View Markdown Table Row 2/3 ')
 end
 
 local function anchor_corner(win)
@@ -480,7 +480,7 @@ T['MarktableRowView edit keys keep the view open when the row is no longer valid
     eq(#messages, 1)
     eq(messages[1].level, vim.log.levels.WARN)
     eq(vim.api.nvim_get_current_win(), view_win)
-    eq(window_title(0), ' Markdown Table Row 1/3 ')
+    eq(window_title(0), ' View Markdown Table Row 1/3 ')
     eq(#floating_windows(), 1)
 end
 
@@ -534,7 +534,7 @@ T['MarktableRowView peek can be entered by switching windows'] = function()
 
     eq(vim.api.nvim_get_current_win(), view_win)
     press(']r')
-    eq(window_title(0), ' Markdown Table Row 2/3 ')
+    eq(window_title(0), ' View Markdown Table Row 2/3 ')
 
     -- Once entered it behaves like a focused view: leaving closes it.
     vim.api.nvim_set_current_win(source_win)
@@ -558,7 +558,7 @@ T['MarktableRowView peek closes and reopens per window in splits'] = function()
     vim.api.nvim_win_set_cursor(second_win, { 5, 0 })
     vim.cmd('MarktableRowView')
     eq(vim.api.nvim_get_current_win(), second_win)
-    eq(window_title(floating_windows()[1]), ' Markdown Table Row 3/3 ')
+    eq(window_title(floating_windows()[1]), ' View Markdown Table Row 3/3 ')
 
     vim.cmd('MarktableRowView')
     press('[r')
@@ -576,7 +576,7 @@ T['MarktableRowView peek closes and reopens per window in splits'] = function()
         vim.cmd('MarktableRowView')
     end)
     eq(vim.api.nvim_get_current_win(), second_win)
-    eq(window_title(floating_windows()[1]), ' Markdown Table Row 1/3 ')
+    eq(window_title(floating_windows()[1]), ' View Markdown Table Row 1/3 ')
     vim.api.nvim_win_close(second_win, true)
 end
 
@@ -631,7 +631,7 @@ T['MarktableRowView peek closes when its window switches to another buffer'] = f
     eq(#floating_windows(), 0)
 
     vim.cmd('MarktableRowView')
-    eq(window_title(floating_windows()[1]), ' Markdown Table Row 1/1 ')
+    eq(window_title(floating_windows()[1]), ' View Markdown Table Row 1/1 ')
     eq(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(floating_windows()[1]), 1, 2, false), { 'other' })
 end
 
@@ -645,7 +645,7 @@ T['MarktableRowView does not focus a peek left stale by typeahead'] = function()
     vim.api.nvim_win_set_cursor(source_win, { 4, 0 })
     vim.cmd('MarktableRowView')
     eq(vim.api.nvim_get_current_win(), source_win)
-    eq(window_title(floating_windows()[1]), ' Markdown Table Row 2/3 ')
+    eq(window_title(floating_windows()[1]), ' View Markdown Table Row 2/3 ')
 
     -- Same for a text change that TextChanged has not reported yet.
     vim.api.nvim_buf_set_text(source, 3, 2, 3, 6, { 'Bet' })
@@ -674,12 +674,12 @@ T['MarktableRowView moves back right after a wide row'] = function()
         '| ' .. string.rep('w', 60) .. ' | b |',
         '| c | d |',
     }, 3)
-    vim.api.nvim_win_set_cursor(0, { 3, 50 })
+    vim.api.nvim_win_set_cursor(0, { 3, 45 })
 
     vim.cmd('MarktableRowView')
     vim.cmd('MarktableRowView')
     local wanted = vim.api.nvim_win_get_config(0).col
-    eq(wanted, 50)
+    eq(wanted, 45)
 
     press(']r')
     eq(vim.api.nvim_win_get_config(0).col < wanted, true)
@@ -707,9 +707,54 @@ T['MarktableRowView ]r and [r take a count'] = function()
     focus_view_on_row(source_buffer(view_table, 3))
 
     press('2]r')
-    eq(window_title(0), ' Markdown Table Row 3/3 ')
+    eq(window_title(0), ' View Markdown Table Row 3/3 ')
     press('5[r')
-    eq(window_title(0), ' Markdown Table Row 1/3 ')
+    eq(window_title(0), ' View Markdown Table Row 1/3 ')
+end
+
+local function footer_text(win)
+    local footer = vim.api.nvim_win_get_config(win).footer
+    if type(footer) == 'table' then
+        return footer[1] and footer[1][1] or ''
+    end
+
+    return footer or ''
+end
+
+T['MarktableRowView shows when it has focus'] = function()
+    source_buffer(view_table, 3)
+
+    vim.cmd('MarktableRowView')
+    local view_win = floating_windows()[1]
+    eq(vim.wo[view_win].winhighlight, 'FloatBorder:MarktableViewBorder')
+    eq(footer_text(view_win), '')
+
+    vim.cmd('MarktableRowView')
+    eq(vim.wo[view_win].winhighlight, 'FloatBorder:MarktableViewFocusBorder')
+    eq(footer_text(view_win), ' ]r [r · e edit · q ')
+
+    -- The hint never widens the view: it is shorter than the title.
+    eq(vim.fn.strdisplaywidth(' ]r [r · e edit · q ') < vim.fn.strdisplaywidth(window_title(view_win)), true)
+end
+
+T['MarktableRowView entered with a window command shows focus too'] = function()
+    source_buffer(view_table, 3)
+
+    vim.cmd('MarktableRowView')
+    vim.cmd('wincmd w')
+
+    eq(vim.wo.winhighlight, 'FloatBorder:MarktableViewFocusBorder')
+    eq(footer_text(0), ' ]r [r · e edit · q ')
+end
+
+T['MarktableRowView highlight groups survive a color scheme change'] = function()
+    source_buffer(view_table, 3)
+    vim.cmd('MarktableRowView')
+
+    vim.cmd('colorscheme default')
+
+    eq(vim.api.nvim_get_hl(0, { name = 'MarktableViewBorder' }).link, 'FloatBorder')
+    eq(vim.api.nvim_get_hl(0, { name = 'MarktableViewFocusBorder' }).link, 'Special')
 end
 
 return T

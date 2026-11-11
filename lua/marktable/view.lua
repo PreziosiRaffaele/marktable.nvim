@@ -10,6 +10,15 @@ local sections = require('marktable.sections')
 
 local augroup_name = 'marktable_row_view'
 
+-- Key hint in the bottom border while the view has focus. Shorter than the
+-- title, so showing it never changes the view's width.
+local browse_hint = ' ]r [r · e edit · q '
+
+-- Default links keep any user or color scheme override, and Neovim keeps them
+-- through `:highlight clear` and color scheme changes.
+vim.api.nvim_set_hl(0, 'MarktableViewBorder', { link = 'FloatBorder', default = true })
+vim.api.nvim_set_hl(0, 'MarktableViewFocusBorder', { link = 'Special', default = true })
+
 ---@class MarktableRowView
 ---@field config MarktableConfig Active plugin settings.
 ---@field source_buf integer Markdown buffer the shown row comes from.
@@ -50,11 +59,15 @@ local function reset_augroup()
 end
 
 ---Format the view window title.
+---
+---Behavior:
+---Never shorter than the editor's `Edit Markdown Table Row N` title, so an
+---editor opened in place of a title-wide view fits the same width.
 ---@param index integer 1-based data-row index.
 ---@param count integer Number of data rows in the table.
 ---@return string title Window title.
 local function view_title(index, count)
-    return string.format(' Markdown Table Row %d/%d ', index, count)
+    return string.format(' View Markdown Table Row %d/%d ', index, count)
 end
 
 ---Replace the read-only view buffer content.
@@ -66,20 +79,6 @@ local function set_view_lines(buf, lines)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     vim.bo[buf].modifiable = false
     vim.bo[buf].modified = false
-end
-
----Compute the view width that fits its content and title.
----@param lines string[] Sectioned row lines.
----@param title string Window title.
----@param max_width integer Width cap.
----@return integer width View width, in columns.
-local function content_width(lines, title, max_width)
-    local width = vim.fn.strdisplaywidth(title)
-    for _, line in ipairs(lines) do
-        width = math.max(width, vim.fn.strdisplaywidth(line))
-    end
-
-    return math.max(math.min(width, max_width), 1)
 end
 
 ---Estimate the displayed height of lines soft-wrapped at `width`.
@@ -138,13 +137,16 @@ local function placement(source_win, height, height_cap)
     return above
 end
 
----Shrink or grow the view height to its soft-wrapped content.
+---Style the view for peeking or for having focus.
 ---@param view MarktableRowView Open view.
+---@param focused boolean True when the view has focus (browse mode).
 ---@return nil
-local function fit_height(view)
-    local text_height = vim.api.nvim_win_text_height(view.win, {}).all
+local function style_view(view, focused)
+    local border = focused and 'MarktableViewFocusBorder' or 'MarktableViewBorder'
+    vim.wo[view.win].winhighlight = 'FloatBorder:' .. border
     vim.api.nvim_win_set_config(view.win, {
-        height = math.max(math.min(text_height, view.max_height), 1),
+        footer = focused and browse_hint or '',
+        footer_pos = 'center',
     })
 end
 
@@ -159,7 +161,7 @@ end
 ---@param title string Window title.
 ---@return nil
 local function layout_view(view, lines, title)
-    local width = content_width(lines, title, view.max_width)
+    local width = float.content_width(lines, title, view.max_width)
     view.corner.col = math.min(view.wanted_col, float.max_col(width))
 
     vim.api.nvim_win_set_config(view.win, {
@@ -171,7 +173,7 @@ local function layout_view(view, lines, title)
         title = title,
         title_pos = 'center',
     })
-    fit_height(view)
+    float.fit_height(view.win, view.max_height)
 end
 
 ---Close a view, optionally returning focus to its source window.
@@ -281,11 +283,13 @@ local function edit_shown_row(view, insert_key)
     end
 
     local cursor = vim.api.nvim_win_get_cursor(view.win)
+    local view_config = vim.api.nvim_win_get_config(view.win)
     -- The view is focused, so closing it returns focus to the source window.
     close_view(view, true)
     vim.api.nvim_win_set_cursor(view.source_win, { view.line, 0 })
     local opened = view.open_editor({
         position = view.corner,
+        size = { width = view_config.width, height = view_config.height },
         cursor = cursor,
         on_close = function(editor_cursor, line)
             return_to_view(view, editor_cursor, line)
@@ -334,10 +338,12 @@ local function set_view_keymaps(view)
     end, 'Close Markdown table row view')
 end
 
----Close the view when focus leaves it in browse mode.
+---Switch a focused view to browse mode: focus styling, and close when focus
+---leaves it.
 ---@param view MarktableRowView Focused view.
 ---@return nil
-local function set_browse_autocmds(view)
+local function enter_browse(view)
+    style_view(view, true)
     local group = reset_augroup()
 
     vim.api.nvim_create_autocmd('WinLeave', {
@@ -405,7 +411,7 @@ local function set_peek_autocmds(view)
         group = group,
         callback = function()
             if vim.api.nvim_get_current_win() == view.win then
-                set_browse_autocmds(view)
+                enter_browse(view)
             else
                 close_view(view, false)
             end
@@ -420,7 +426,7 @@ local function focus_view(view)
     -- Drop the peek triggers first; entering is handled explicitly here.
     reset_augroup()
     vim.api.nvim_set_current_win(view.win)
-    set_browse_autocmds(view)
+    enter_browse(view)
 end
 
 ---Check whether an open peek still shows the row under the current cursor.
@@ -471,7 +477,7 @@ local function create_view(spec)
     local max_width, height_cap = float.size_caps(spec.config)
     local corner = spec.corner and vim.deepcopy(spec.corner)
     if not corner then
-        local width = content_width(lines, title, max_width)
+        local width = float.content_width(lines, title, max_width)
         corner = placement(spec.source_win, estimated_height(lines, width), height_cap)
     end
 
@@ -514,6 +520,7 @@ local function create_view(spec)
     current = view
 
     layout_view(view, lines, title)
+    style_view(view, false)
     local cursor = spec.cursor or sections.first_value_cursor(lines)
     vim.api.nvim_win_set_cursor(win, { math.min(cursor[1], #lines), cursor[2] })
     set_view_keymaps(view)

@@ -29,7 +29,7 @@ require('marktable').setup({
 })
 ```
 
-Both values are clamped to the available UI space, so the window never overflows the screen. The row view uses them as maximums and shrinks to fit its content.
+Both values are clamped to the available UI space, so the window never overflows the screen. The row view, and an editor opened from it, use them as maximums and fit their content. The view border uses the `MarktableViewBorder` highlight group, and `MarktableViewFocusBorder` while the view has focus.
 
 ## Development
 
