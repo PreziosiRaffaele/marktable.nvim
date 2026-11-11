@@ -1,8 +1,53 @@
 # marktable.nvim
 
-Row-first editor for Markdown pipe-table rows.
+**Edit one row of a Markdown table as plain text, in a floating window.**
+
+Markdown pipe tables are easy to read but painful to edit once cells hold
+sentences, escaped pipes, or line breaks. marktable.nvim lets you put the cursor
+on a table row and open it as a small Markdown buffer with one section per
+column. Edit the fields like normal text, save with `:w`, and the plugin writes
+the row back into the table.
 
 ![marktable.nvim demo](docs/demo.gif)
+
+## How it works
+
+Given this table, with the cursor on the `SQLite` row:
+
+```markdown
+| Option | Description | Recommendation |
+| --- | --- | --- |
+| SQLite | Embedded relational database in a single file.<br>Useful for local notes. | Preferred |
+```
+
+`:MarktableRowEdit` opens a floating editor:
+
+```markdown
+# Option
+SQLite
+
+# Description
+Embedded relational database in a single file.
+Useful for local notes.
+
+# Recommendation
+Preferred
+```
+
+Save it, and the plugin replaces only that row. Pipes are escaped as `\|` and
+line breaks become `<br>`, so you never have to type either by hand. Nothing
+else in the file changes, and no hidden markers are added.
+
+## Installation
+
+With [lazy.nvim](https://github.com/folke/lazy.nvim):
+
+```lua
+{ 'PreziosiRaffaele/marktable.nvim', ft = 'markdown' }
+```
+
+The plugin registers its commands on startup. Calling `setup()` is only needed
+to change the defaults (see [Configuration](#configuration)).
 
 ## Commands
 
