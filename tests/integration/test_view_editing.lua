@@ -157,6 +157,20 @@ T['the view warns instead of reopening on another row when the row was deleted']
     eq(state().buftype, '')
 end
 
+T['the reopened view fits a terminal resized while the editor was open'] = function()
+    child.api.nvim_buf_set_lines(0, 2, 3, false, { '| ' .. string.rep('w', 60) .. ' | one |' })
+    focus_view()
+    child.type_keys('e')
+
+    child.o.columns = 40
+    child.type_keys(':w<CR>')
+
+    eq(wait_for_view(), true)
+    local view_config = child.api.nvim_win_get_config(0)
+    eq(view_config.width <= 36, true)
+    eq(view_config.col + view_config.width + 2 <= 40, true)
+end
+
 T['MarktableRowEdit still closes back to the table'] = function()
     child.cmd('MarktableRowEdit')
     child.type_keys('A', ' direct', '<Esc>', ':w<CR>')

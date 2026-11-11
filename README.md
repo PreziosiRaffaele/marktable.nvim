@@ -8,7 +8,7 @@ Row-first editor for Markdown pipe-table rows.
 
 - `:MarktableRowNew` opens a floating editor with one empty section per table header and inserts the generated row.
 - `:MarktableRowEdit` opens the data row under the cursor, shows its row number in the floating editor title, and replaces only that row.
-- `:MarktableRowView` peeks at the data row under the cursor in a read-only float. Run it again to focus the view, then use `]r` / `[r` to move between rows, `e` or an insert key (`i` `a` `o` `I` `A` `O`) to edit the shown row in place, and `q` or `<Esc>` to close. Saving or canceling that editor returns to the view, so you can keep moving with `]r` and editing.
+- `:MarktableRowView` peeks at the data row under the cursor in a read-only float. Run it again to focus the view, then use `]r` / `[r` (with an optional count) to move between rows, `e` or an insert key (`i` `a` `o` `I` `A` `O`) to edit the shown row in place, and `q` or `<Esc>` to close. Saving or canceling that editor returns to the view, so you can keep moving with `]r` and editing.
 
 Submit the editor with `:w` or `:wq`. Cancel with `q`.
 

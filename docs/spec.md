@@ -25,8 +25,8 @@ any domain-specific table schema. Column headers define the editable fields.
   editable source buffer from that row, show its table data-row index in the
   `Edit Markdown Table Row N` editor title, then replace only that row.
 - `:MarktableRowView`: show the data row under the cursor in a read-only
-  floating view without changing the buffer. If a view opened from the current
-  window is already open, focus it instead. See
+  floating view without changing the buffer. If a peek opened from the current
+  window still shows the row under the cursor, focus it instead. See
   [View Behavior](#view-behavior).
 
 Submit the floating editor with `:w` or `:wq`. Cancel with `q`.
@@ -147,14 +147,20 @@ is the number of data rows.
 The first `:MarktableRowView` opens the view without entering it; the cursor
 stays in the source window.
 
-- The view opens below the cursor line, or above it when there is not enough
-  room below.
+- The view opens below the cursor's row, or above it when there is not enough
+  room below. A soft-wrapped row is never covered: the view goes below its last
+  screen line or above its first. The view starts at the cursor's column and
+  moves left only as far as needed to stay on screen.
 - Width fits the longest line and the title; height fits the soft-wrapped
   content. Both are capped by the configured `width` and `height` and by the
   available UI space.
 - The view closes when, in the source buffer, the cursor moves, the text
   changes, insert mode starts, or the buffer leaves its window or is hidden.
-  It also closes when focus moves to any other window.
+  It also closes when another buffer is shown in the source window, or when
+  focus moves to any other window.
+- Running the command again focuses the peek only if it still shows the row
+  under the cursor. A peek left stale by pending typeahead (a macro or
+  mapping that moved the cursor or changed the text) is replaced by a new one.
 - Only one view is open at a time; opening a new one closes the previous one.
 
 ### Browse
@@ -166,8 +172,8 @@ normal-mode keys are available:
 
 | Key                     | Action                                                            |
 | ----------------------- | ----------------------------------------------------------------- |
-| `]r`                    | Show the next data row.                                           |
-| `[r`                    | Show the previous data row.                                       |
+| `]r`                    | Show the next data row; with a count, move that many rows.        |
+| `[r`                    | Show the previous data row; with a count, move that many rows.    |
 | `e`                     | Edit the shown row (see [Switching to edit](#switching-to-edit)). |
 | `i` `a` `o` `I` `A` `O` | Edit the shown row and run the key there, entering insert mode.   |
 | `q`                     | Close the view.                                                   |
@@ -176,13 +182,14 @@ normal-mode keys are available:
 Other normal-mode editing commands (`x`, `dd`, `p`, ...) fail because the view
 buffer is not modifiable.
 
-- Navigation stops at the first and last data rows; it does not wrap. At a
-  boundary the key does nothing.
+- Navigation stops at the first and last data rows; it does not wrap. A count
+  past a boundary stops at that boundary; at a boundary the key does nothing.
 - Each step re-reads the table from the source buffer. If the table is no
   longer valid, notify with `WARN` and close the view.
 - The source window cursor follows the shown row, so after closing the view the
   cursor is on the last row viewed.
-- The view resizes to the new row's content and keeps its position.
+- The view resizes to the new row's content and keeps its position, moving
+  left only while a row is too wide to fit at its starting column.
 - The cursor starts on the first section value (line 2), where editing usually
   starts.
 - The view closes when focus leaves it.
@@ -213,9 +220,17 @@ When an editor opened from the view closes, however it closes (`:w`, `:wq`,
 content of the edited row, with the cursor where the editor left it. The row is
 tracked by the editor's anchor, so it stays correct when lines above the table
 change while the editor is open. Editing several rows is then a loop of `]r`,
-an insert key, the edit, and `:w`; `q` leaves the view. If the row is no longer
-a supported data row, notify with `WARN` and stay in the source window. An
-editor opened with `:MarktableRowEdit` still closes back to the table.
+an insert key, the edit, and `:w`; `q` leaves the view. The reopened view's
+size caps are recomputed for the current screen, so it fits a terminal that was
+resized while the editor was open. If the row is no longer a supported data
+row, notify with `WARN` and stay in the source window. An editor opened with
+`:MarktableRowEdit` still closes back to the table.
+
+Limitation: the view reopens on the event-loop tick after the editor closes,
+and the editor itself closes on a scheduled callback after `:w`. The loop above
+therefore works interactively but cannot be replayed as one macro (for example
+`Ax<Esc>:w<CR>]r`): keys queued after `:w` run in the editor before the view
+returns.
 
 ## Row Detection
 
@@ -316,6 +331,8 @@ for side-effecting functions.
   submitting fails with `ERROR` and the editor stays open; it never writes over
   a neighboring row. An editor opened from the view that then closes warns
   instead of reopening the view on another row.
+- A new row's anchor only marks where to insert: if that line is deleted while
+  `:MarktableRowNew` is open, the row is inserted at the shifted position.
 - Header or separator edit attempts warn and do not modify the buffer.
 - Tables with duplicate or empty headers warn and do not modify the buffer.
 - Malformed rows warn and do not modify the buffer.

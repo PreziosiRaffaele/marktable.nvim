@@ -110,6 +110,14 @@ function M.build_lines(headers, cells)
     return lines
 end
 
+---Cursor on the first section value, where editing a row usually starts.
+---@param lines string[] Sectioned buffer lines.
+---@return integer[] cursor `{ row, col }` cursor on line 2, or line 1 for a
+---single-line buffer.
+function M.first_value_cursor(lines)
+    return { math.min(2, math.max(#lines, 1)), 0 }
+end
+
 ---Parse sectioned source lines back into one table row's cell values.
 ---
 ---Behavior:

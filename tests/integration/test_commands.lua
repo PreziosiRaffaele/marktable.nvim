@@ -614,4 +614,102 @@ T['MarktableRowView stores a column that keeps the view on screen'] = function()
     eq(view_config.col + view_config.width + 2 <= vim.o.columns, true)
 end
 
+T['MarktableRowView peek closes when its window switches to another buffer'] = function()
+    local source = source_buffer(view_table, 3)
+    local source_win = vim.api.nvim_get_current_win()
+    vim.cmd('split')
+    vim.api.nvim_set_current_win(source_win)
+    local other = source_buffer({ '| X | Y |', '| --- | --- |', '| other | row |' }, 3)
+    vim.api.nvim_set_current_buf(source)
+    vim.api.nvim_win_set_cursor(source_win, { 3, 0 })
+
+    vim.cmd('MarktableRowView')
+    eq(#floating_windows(), 1)
+
+    -- The source stays visible in the other split, so BufWinLeave never fires.
+    vim.api.nvim_set_current_buf(other)
+    eq(#floating_windows(), 0)
+
+    vim.cmd('MarktableRowView')
+    eq(window_title(floating_windows()[1]), ' Markdown Table Row 1/1 ')
+    eq(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(floating_windows()[1]), 1, 2, false), { 'other' })
+end
+
+T['MarktableRowView does not focus a peek left stale by typeahead'] = function()
+    local source = source_buffer(view_table, 3)
+    local source_win = vim.api.nvim_get_current_win()
+
+    -- Moving the cursor without running the event loop is what a macro or
+    -- mapping does: CursorMoved has not closed the peek yet.
+    vim.cmd('MarktableRowView')
+    vim.api.nvim_win_set_cursor(source_win, { 4, 0 })
+    vim.cmd('MarktableRowView')
+    eq(vim.api.nvim_get_current_win(), source_win)
+    eq(window_title(floating_windows()[1]), ' Markdown Table Row 2/3 ')
+
+    -- Same for a text change that TextChanged has not reported yet.
+    vim.api.nvim_buf_set_text(source, 3, 2, 3, 6, { 'Bet' })
+    vim.cmd('MarktableRowView')
+    eq(vim.api.nvim_get_current_win(), source_win)
+    eq(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(floating_windows()[1]), 1, 2, false), { 'Bet' })
+end
+
+T['MarktableRowNew still inserts after its anchor row was deleted'] = function()
+    local source = source_buffer({ '| A | B |', '| --- | --- |', '| 1 | 2 |', '| 3 | 4 |' }, 3)
+
+    vim.cmd('MarktableRowNew')
+    vim.api.nvim_buf_set_lines(source, 2, 3, false, {})
+    local ok = write_editor({ '# A', 'x', '', '# B', 'y' })
+
+    eq(ok, true)
+    eq(lines(source), { '| A | B |', '| --- | --- |', '| 3 | 4 |', '| x | y |' })
+end
+
+T['MarktableRowView moves back right after a wide row'] = function()
+    local padding = string.rep(' ', 48)
+    source_buffer({
+        '| A | B |',
+        '| --- | --- |',
+        '| a' .. padding .. '| b |',
+        '| ' .. string.rep('w', 60) .. ' | b |',
+        '| c | d |',
+    }, 3)
+    vim.api.nvim_win_set_cursor(0, { 3, 50 })
+
+    vim.cmd('MarktableRowView')
+    vim.cmd('MarktableRowView')
+    local wanted = vim.api.nvim_win_get_config(0).col
+    eq(wanted, 50)
+
+    press(']r')
+    eq(vim.api.nvim_win_get_config(0).col < wanted, true)
+    press(']r')
+    eq(vim.api.nvim_win_get_config(0).col, wanted)
+end
+
+T['MarktableRowView opens below every screen line of a wrapped row'] = function()
+    -- 3 rows; the first data row wraps over 3 screen lines (screen rows 3-5).
+    source_buffer({
+        '| A | B |',
+        '| --- | --- |',
+        '| ' .. string.rep('word ', 40) .. '| b |',
+        '| c | d |',
+    }, 3)
+    eq(vim.fn.screenpos(0, 3, 1).row, 3)
+
+    vim.cmd('MarktableRowView')
+    local view_config = vim.api.nvim_win_get_config(floating_windows()[1])
+
+    eq({ view_config.anchor, view_config.row }, { 'NW', 5 })
+end
+
+T['MarktableRowView ]r and [r take a count'] = function()
+    focus_view_on_row(source_buffer(view_table, 3))
+
+    press('2]r')
+    eq(window_title(0), ' Markdown Table Row 3/3 ')
+    press('5[r')
+    eq(window_title(0), ' Markdown Table Row 1/3 ')
+end
+
 return T

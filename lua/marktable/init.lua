@@ -258,11 +258,8 @@ local function open_row_editor(context, title, lines, opts)
         end,
     })
 
-    if opts.cursor then
-        vim.api.nvim_win_set_cursor(editor_win, { math.min(opts.cursor[1], #lines), opts.cursor[2] })
-    elseif #lines >= 2 then
-        vim.api.nvim_win_set_cursor(editor_win, { 2, 0 })
-    end
+    local cursor = opts.cursor or sections.first_value_cursor(lines)
+    vim.api.nvim_win_set_cursor(editor_win, { math.min(cursor[1], #lines), cursor[2] })
 end
 
 ---Refuse to run a command from one of the plugin's own floats.
@@ -282,11 +279,13 @@ end
 ---Set an extmark used as the source table row anchor.
 ---@param buf integer Source buffer handle.
 ---@param line_number integer 1-based source line number.
+---@param invalidate boolean Invalidate the anchor when its line is deleted.
+---Edited rows use it; a new row only needs a position to insert after.
 ---@return integer mark_id Extmark id.
-local function set_anchor_mark(buf, line_number)
+local function set_anchor_mark(buf, line_number, invalidate)
     return vim.api.nvim_buf_set_extmark(buf, namespace, line_number - 1, 0, {
         right_gravity = false,
-        invalidate = true,
+        invalidate = invalidate,
     })
 end
 
@@ -315,7 +314,7 @@ local function open_new_row_editor()
         source_buf = source_buf,
         source_win = source_win,
         table_info = table_info,
-        mark_id = set_anchor_mark(source_buf, insert_after_line),
+        mark_id = set_anchor_mark(source_buf, insert_after_line, false),
         mode = 'new',
     }
 
@@ -343,7 +342,7 @@ local function open_current_row_editor(opts)
         source_buf = source_buf,
         source_win = source_win,
         table_info = table_info,
-        mark_id = set_anchor_mark(source_buf, cursor_line),
+        mark_id = set_anchor_mark(source_buf, cursor_line, true),
         mode = 'edit',
     }
 
