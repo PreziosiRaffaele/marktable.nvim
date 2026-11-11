@@ -1,11 +1,14 @@
 ---Floating editor commands for one Markdown pipe-table row.
 ---
 ---Responsibility:
----Expose row-first Markdown table editing commands while keeping parsing and
----rendering delegated to `marktable.table`.
+---Expose row-first Markdown table commands and own the floating row editor,
+---delegating table parsing to `marktable.table`, the section format to
+---`marktable.sections`, and the read-only view to `marktable.view`.
 local M = {}
 
 local markdown_table = require('marktable.table')
+local row_view = require('marktable.view')
+local sections = require('marktable.sections')
 
 local namespace = vim.api.nvim_create_namespace('marktable')
 
@@ -31,6 +34,17 @@ local config = vim.deepcopy(defaults)
 ---@field mark_id integer Extmark tracking the replacement or insertion anchor.
 ---@field mode 'edit'|'new' Submit behavior.
 
+---@class MarktableEditorPosition
+---@field anchor 'NW'|'SW' Window corner placed at `row`/`col`.
+---@field row integer Editor-relative 0-based row of the anchor corner.
+---@field col integer Editor-relative 0-based column of the anchor corner.
+
+---@class MarktableEditorOpenOpts
+---@field position MarktableEditorPosition|nil Open here instead of centered.
+---@field cursor integer[]|nil Initial `{ row, col }` cursor in the editor buffer.
+---@field on_close fun(cursor: integer[])|nil Called with the last editor cursor
+---after the editor window closes, however it was closed.
+
 -- ============================================================================
 -- Local helpers
 -- ============================================================================
@@ -47,167 +61,6 @@ end
 ---@return nil
 local function error_notify(message)
     vim.notify(message, vim.log.levels.ERROR)
-end
-
----Split a possibly multi-line cell value into editor lines.
----@param value string Cell value.
----@return string[] lines Editor lines.
-local function split_cell_lines(value)
-    if value == '' then
-        return {}
-    end
-
-    return vim.split(value, '\n', { plain = true })
-end
-
----Build row-editor source lines from table headers and optional cell values.
----@param headers string[] Table headers in order.
----@param cells string[]|nil Existing cell values, or nil for a new row.
----@return string[] lines Editor buffer lines.
-local function build_editor_lines(headers, cells)
-    local lines = {}
-
-    for index, header in ipairs(headers) do
-        table.insert(lines, '# ' .. header)
-
-        for _, value_line in ipairs(split_cell_lines(cells and cells[index] or '')) do
-            table.insert(lines, value_line)
-        end
-
-        if index < #headers then
-            table.insert(lines, '')
-        end
-    end
-
-    return lines
-end
-
----Map a known section heading line back to its table column index.
----@param headers string[] Table headers in order.
----@param line string Editor line.
----@return integer|nil index Matching header index, or nil for non-section lines.
-local function known_heading_index(headers, line)
-    local label = line:match('^#%s+(.+)%s*$')
-    if not label then
-        return nil
-    end
-
-    label = vim.trim(label)
-    for index, header in ipairs(headers) do
-        if label == header then
-            return index
-        end
-    end
-
-    return nil
-end
-
----Copy a line range into a new table.
----@param lines string[] Source lines.
----@param first integer First 1-based line index.
----@param last integer Last 1-based line index.
----@return string[] slice Copied lines.
-local function slice_lines(lines, first, last)
-    local slice = {}
-
-    if first > last then
-        return slice
-    end
-
-    for index = first, last do
-        table.insert(slice, lines[index])
-    end
-
-    return slice
-end
-
----Trim leading and trailing blank lines from a section body.
----@param lines string[] Section body lines.
----@return string[] trimmed Body lines without outer blanks.
-local function trim_section_body(lines)
-    local first = 1
-    local last = #lines
-
-    while first <= last and vim.trim(lines[first]) == '' do
-        first = first + 1
-    end
-
-    while last >= first and vim.trim(lines[last]) == '' do
-        last = last - 1
-    end
-
-    return slice_lines(lines, first, last)
-end
-
----Describe an expected section heading for errors.
----@param header string Header label.
----@return string text Formatted section heading.
-local function section_name(header)
-    return '# ' .. header
-end
-
----Parse editor source lines back into one table row's cell values.
----
----Behavior:
----Accepts the row-editor source format only. Unknown `#` headings remain part
----of the current section body; known headings must appear exactly once in table
----order.
----@param lines string[] Editor buffer lines.
----@param headers string[] Table headers in order.
----@return string[]|nil cells Parsed cell values.
----@return string|nil err Error message for invalid source format.
-local function parse_editor_lines(lines, headers)
-    local cells = {}
-    local cursor = 1
-
-    for expected_index, header in ipairs(headers) do
-        while cursor <= #lines and vim.trim(lines[cursor]) == '' do
-            cursor = cursor + 1
-        end
-
-        if cursor > #lines then
-            return nil, 'Missing section: ' .. section_name(header)
-        end
-
-        local heading_index = known_heading_index(headers, lines[cursor])
-        if not heading_index then
-            return nil, 'Expected section: ' .. section_name(header)
-        end
-
-        if heading_index ~= expected_index then
-            if heading_index < expected_index then
-                return nil, 'Duplicate section: ' .. section_name(headers[heading_index])
-            end
-
-            return nil,
-                string.format(
-                    'Expected section %s before %s',
-                    section_name(header),
-                    section_name(headers[heading_index])
-                )
-        end
-
-        cursor = cursor + 1
-        local body_start = cursor
-
-        while cursor <= #lines and not known_heading_index(headers, lines[cursor]) do
-            cursor = cursor + 1
-        end
-
-        local body = trim_section_body(slice_lines(lines, body_start, cursor - 1))
-        cells[expected_index] = table.concat(body, '\n')
-    end
-
-    while cursor <= #lines do
-        local duplicate_index = known_heading_index(headers, lines[cursor])
-        if duplicate_index then
-            return nil, 'Duplicate section: ' .. section_name(headers[duplicate_index])
-        end
-
-        cursor = cursor + 1
-    end
-
-    return cells, nil
 end
 
 ---Move focus back to the launching window when it still exists.
@@ -283,7 +136,7 @@ end
 ---@return boolean ok True when submission succeeded.
 local function submit_editor(editor_buf, editor_win, context)
     local lines = vim.api.nvim_buf_get_lines(editor_buf, 0, -1, false)
-    local cells, parse_err = parse_editor_lines(lines, context.table_info.headers)
+    local cells, parse_err = sections.parse_lines(lines, context.table_info.headers)
     if not cells then
         error_notify(parse_err or 'Invalid Markdown table row source')
         return false
@@ -304,14 +157,20 @@ local function submit_editor(editor_buf, editor_win, context)
 end
 
 ---Compute floating editor dimensions for the current Neovim UI.
+---
+---Behavior:
+---Centers the editor by default. With `position`, keeps that anchor corner,
+---shifts left only as needed to fit the width, and caps the height to the room
+---on the anchored side.
+---@param position MarktableEditorPosition|nil Anchor corner to open at.
 ---@return table config Window config for `nvim_open_win`.
-local function floating_window_config()
+local function floating_window_config(position)
     local max_width = math.max(vim.o.columns - 4, 20)
     local max_height = math.max(vim.o.lines - 6, 8)
     local width = math.min(config.width, max_width)
     local height = math.min(config.height, max_height)
 
-    return {
+    local win_config = {
         relative = 'editor',
         width = width,
         height = height,
@@ -320,14 +179,28 @@ local function floating_window_config()
         style = 'minimal',
         border = 'single',
     }
+
+    if position then
+        -- Both sides reserve two rows for the border.
+        local room = position.anchor == 'SW' and position.row - 2 or vim.o.lines - vim.o.cmdheight - position.row - 2
+        win_config.anchor = position.anchor
+        win_config.row = position.row
+        win_config.col = math.max(math.min(position.col, vim.o.columns - width - 2), 0)
+        win_config.height = math.max(math.min(height, room), 1)
+    end
+
+    return win_config
 end
 
 ---Open the floating row editor for a prepared context.
 ---@param context MarkdownTableEditorContext Editor context.
 ---@param title string Floating window title.
 ---@param lines string[] Initial editor source lines.
+---@param opts MarktableEditorOpenOpts|nil Position and cursor overrides.
 ---@return nil
-local function open_row_editor(context, title, lines)
+local function open_row_editor(context, title, lines, opts)
+    opts = opts or {}
+
     local editor_buf = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_name(editor_buf, 'Marktable-' .. tostring((vim.uv or vim.loop).hrtime()))
 
@@ -338,7 +211,7 @@ local function open_row_editor(context, title, lines)
     vim.api.nvim_buf_set_lines(editor_buf, 0, -1, false, lines)
     vim.bo[editor_buf].modified = false
 
-    local win_config = floating_window_config()
+    local win_config = floating_window_config(opts.position)
     win_config.title = ' ' .. title .. ' '
     win_config.title_pos = 'center'
 
@@ -365,7 +238,24 @@ local function open_row_editor(context, title, lines)
         silent = true,
     })
 
-    if #lines >= 2 then
+    local on_close = opts.on_close
+    if on_close then
+        vim.api.nvim_create_autocmd('WinClosed', {
+            pattern = tostring(editor_win),
+            once = true,
+            callback = function()
+                local ok, cursor = pcall(vim.api.nvim_win_get_cursor, editor_win)
+                -- Window layout changes are not allowed inside WinClosed.
+                vim.schedule(function()
+                    on_close(ok and cursor or { 1, 0 })
+                end)
+            end,
+        })
+    end
+
+    if opts.cursor then
+        vim.api.nvim_win_set_cursor(editor_win, { math.min(opts.cursor[1], #lines), opts.cursor[2] })
+    elseif #lines >= 2 then
         vim.api.nvim_win_set_cursor(editor_win, { 2, 0 })
     end
 end
@@ -405,31 +295,20 @@ local function open_new_row_editor()
         mode = 'new',
     }
 
-    open_row_editor(context, 'New Markdown Table Row', build_editor_lines(table_info.headers, nil))
+    open_row_editor(context, 'New Markdown Table Row', sections.build_lines(table_info.headers, nil))
 end
 
 ---Open an editor for the Markdown table data row under the cursor.
----@return nil
-local function open_current_row_editor()
+---@param opts MarktableEditorOpenOpts|nil Position and cursor overrides.
+---@return boolean opened True when the editor opened.
+local function open_current_row_editor(opts)
     local source_buf = vim.api.nvim_get_current_buf()
     local source_win = vim.api.nvim_get_current_win()
     local cursor_line = vim.api.nvim_win_get_cursor(source_win)[1]
-    local table_info, err = markdown_table.find_table(source_buf, cursor_line)
-    if not table_info then
-        warn(err or 'No supported Markdown table data row under cursor')
-        return
-    end
-
-    if cursor_line <= table_info.separator_line then
-        warn('Cursor must be on a Markdown table data row')
-        return
-    end
-
-    local data_row_index = cursor_line - table_info.separator_line
-    local data_row = table_info.rows[data_row_index]
-    if not data_row then
-        warn('Cursor must be on a Markdown table data row')
-        return
+    local table_info, data_row_index, err = markdown_table.find_data_row(source_buf, cursor_line)
+    if not table_info or not data_row_index then
+        warn(err or 'Cursor must be on a Markdown table data row')
+        return false
     end
 
     local context = {
@@ -443,8 +322,16 @@ local function open_current_row_editor()
     open_row_editor(
         context,
         'Edit Markdown Table Row ' .. tostring(data_row_index),
-        build_editor_lines(table_info.headers, data_row.cells)
+        sections.build_lines(table_info.headers, table_info.rows[data_row_index].cells),
+        opts
     )
+    return true
+end
+
+---Peek at the data row under the cursor, or focus an already open peek.
+---@return nil
+local function open_row_view()
+    row_view.open_or_focus(config, open_current_row_editor)
 end
 
 -- ============================================================================
@@ -454,8 +341,8 @@ end
 ---Register Marktable editor commands.
 ---
 ---Side effects:
----Merges `opts` into the active settings and creates the `:MarktableRowNew`
----and `:MarktableRowEdit` user commands.
+---Merges `opts` into the active settings and creates the `:MarktableRowNew`,
+---`:MarktableRowEdit`, and `:MarktableRowView` user commands.
 ---@param opts MarktableConfig|nil User settings overriding the defaults.
 ---@return nil
 function M.setup(opts)
@@ -465,8 +352,14 @@ function M.setup(opts)
         desc = 'Insert a new row into the Markdown table under the cursor',
     })
 
-    vim.api.nvim_create_user_command('MarktableRowEdit', open_current_row_editor, {
+    vim.api.nvim_create_user_command('MarktableRowEdit', function()
+        open_current_row_editor()
+    end, {
         desc = 'Edit the Markdown table data row under the cursor',
+    })
+
+    vim.api.nvim_create_user_command('MarktableRowView', open_row_view, {
+        desc = 'View the Markdown table data row under the cursor',
     })
 end
 

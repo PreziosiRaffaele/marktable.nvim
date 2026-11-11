@@ -98,4 +98,49 @@ T['find_table()']['rejects rows with the wrong width'] = function()
     eq(err, 'Table row at line 3 has 1 cells; expected 2')
 end
 
+T['find_data_row()'] = MiniTest.new_set()
+
+local function find_data_row(lines, row)
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+
+    local table_info, index, err = table_row.find_data_row(buf, row)
+    vim.api.nvim_buf_delete(buf, { force = true })
+
+    return table_info, index, err
+end
+
+local data_row_table = {
+    '| Name | Notes |',
+    '| --- | --- |',
+    '| Alpha | one |',
+    '| Beta | two |',
+}
+
+T['find_data_row()']['returns the table and data-row index'] = function()
+    local table_info, index, err = find_data_row(data_row_table, 4)
+
+    eq(err, nil)
+    eq(index, 2)
+    eq(table_info.rows[index].cells, { 'Beta', 'two' })
+end
+
+T['find_data_row()']['rejects the header and separator rows'] = function()
+    for _, row in ipairs({ 1, 2 }) do
+        local table_info, index, err = find_data_row(data_row_table, row)
+
+        eq(table_info, nil)
+        eq(index, nil)
+        eq(err, 'Cursor must be on a Markdown table data row')
+    end
+end
+
+T['find_data_row()']['passes through table errors'] = function()
+    local table_info, index, err = find_data_row({ 'plain text' }, 1)
+
+    eq(table_info, nil)
+    eq(index, nil)
+    eq(err, 'Cursor line is not a Markdown table row')
+end
+
 return T

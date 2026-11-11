@@ -331,4 +331,27 @@ function M.find_table(buf, row)
         nil
 end
 
+---Find the Markdown table data row under a buffer row.
+---
+---Behavior:
+---Like `find_table`, but also rejects the header and separator rows.
+---@param buf integer Buffer handle.
+---@param row integer 1-based cursor row.
+---@return MarkdownTable|nil table_info Parsed table metadata and rows.
+---@return integer|nil index 1-based data-row index of `row`.
+---@return string|nil err Error message when `row` is not a supported data row.
+function M.find_data_row(buf, row)
+    local table_info, err = M.find_table(buf, row)
+    if not table_info then
+        return nil, nil, err or 'No supported Markdown table data row under cursor'
+    end
+
+    local index = row - table_info.separator_line
+    if not table_info.rows[index] then
+        return nil, nil, 'Cursor must be on a Markdown table data row'
+    end
+
+    return table_info, index, nil
+end
+
 return M
