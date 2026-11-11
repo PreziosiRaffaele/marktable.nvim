@@ -1,12 +1,12 @@
 # marktable.nvim
 
-**Edit one row of a Markdown table as plain text, in a floating window.**
+**Read and edit Markdown table rows as plain text, in a floating window.**
 
-Markdown pipe tables are easy to read but painful to edit once cells hold
-sentences, escaped pipes, or line breaks. marktable.nvim lets you put the cursor
-on a table row and open it as a small Markdown buffer with one section per
-column. Edit the fields like normal text, save with `:w`, and the plugin writes
-the row back into the table.
+Markdown pipe tables get hard to read and edit once cells hold sentences,
+escaped pipes, or line breaks: each row becomes one long line of text. With
+marktable.nvim you put the cursor on a row and see it in a floating window,
+one section per column. Browse the rows there to read them, or edit the fields
+like normal text and save with `:w` to write the row back into the table.
 
 ![marktable.nvim demo](docs/demo.gif)
 
