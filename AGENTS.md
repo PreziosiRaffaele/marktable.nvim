@@ -41,8 +41,8 @@ When changing or removing public commands, flags, columns, or JSON fields, updat
   sectioned `# <column header>` buffer lines shared by the editor and view.
 - `lua/marktable/view.lua`: read-only row view float (peek, focus,
   navigation, close).
-- `lua/marktable/float.lua`: size caps, placement math, and window options
-  shared by the editor and view floats.
+- `lua/marktable/float.lua`: size caps, placement math, window options, and
+  buffer marking shared by the editor and view floats.
 - `tests/unit/`: pure table parser/renderer tests.
 - `tests/integration/`: command, floating-editor, and row-view behavior tests.
 - `tests/minimal_init.lua`: headless Neovim test bootstrap.

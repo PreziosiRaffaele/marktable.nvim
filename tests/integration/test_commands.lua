@@ -426,7 +426,7 @@ T['MarktableRowView inside the view warns and keeps the view open'] = function()
     eq(vim.api.nvim_get_current_win(), view_win)
 end
 
-T['MarktableRowView inside the view warns even when the view text is a table'] = function()
+T['Commands inside the view warn even when the view text is a table'] = function()
     -- The Notes cell holds a whole escaped table, so the view shows real
     -- table lines that could be mistaken for a source table.
     source_buffer({
@@ -441,14 +441,16 @@ T['MarktableRowView inside the view warns even when the view text is a table'] =
     eq(lines(0)[7], '| 1 | 2 |')
     vim.api.nvim_win_set_cursor(0, { 7, 0 })
 
-    local messages = capture_warnings(function()
-        vim.cmd('MarktableRowView')
-    end)
+    for _, command in ipairs({ 'MarktableRowView', 'MarktableRowEdit', 'MarktableRowNew' }) do
+        local messages = capture_warnings(function()
+            vim.cmd(command)
+        end)
 
-    eq(#messages, 1)
-    eq(messages[1].message, 'Run :MarktableRowView from the Markdown buffer, not the row view')
-    eq(vim.api.nvim_get_current_win(), view_win)
-    eq(#floating_windows(), 1)
+        eq(#messages, 1)
+        eq(messages[1].message, 'Run Marktable commands from the Markdown buffer, not from a Marktable window')
+        eq(vim.api.nvim_get_current_win(), view_win)
+        eq(#floating_windows(), 1)
+    end
 end
 
 T['MarktableRowView peek closes when the source text changes'] = function()
@@ -496,6 +498,120 @@ T['Canceling the editor removes its anchor extmark'] = function()
     press('q')
     eq(#vim.api.nvim_buf_get_extmarks(source, namespace, 0, -1, {}), 0)
     eq(vim.api.nvim_win_is_valid(view_win), false)
+end
+
+T['Writing the editor twice before it closes applies the row once'] = function()
+    local source = source_buffer({ '| A | B |', '| --- | --- |', '| 1 | 2 |' }, 3)
+
+    vim.cmd('MarktableRowNew')
+    vim.api.nvim_buf_set_lines(0, 0, -1, false, { '# A', 'x', '', '# B', 'y' })
+    -- The editor closes on a scheduled callback, so both writes run first.
+    vim.cmd('write')
+    vim.cmd('write')
+
+    eq(lines(source), { '| A | B |', '| --- | --- |', '| 1 | 2 |', '| x | y |' })
+end
+
+T['Saving after the edited row was deleted fails instead of overwriting'] = function()
+    local source = source_buffer({ '| A | B |', '| --- | --- |', '| 1 | 2 |', '| 3 | 4 |' }, 3)
+
+    vim.cmd('MarktableRowEdit')
+    vim.api.nvim_buf_set_lines(source, 2, 3, false, {})
+    local ok, err = write_editor({ '# A', 'Z', '', '# B', 'Z' })
+
+    eq(ok, false)
+    eq(err:find('Table row target is no longer available', 1, true) ~= nil, true)
+    eq(lines(source), { '| A | B |', '| --- | --- |', '| 3 | 4 |' })
+end
+
+T['MarktableRowView peek can be entered by switching windows'] = function()
+    source_buffer(view_table, 3)
+    local source_win = vim.api.nvim_get_current_win()
+
+    vim.cmd('MarktableRowView')
+    local view_win = floating_windows()[1]
+    vim.cmd('wincmd w')
+
+    eq(vim.api.nvim_get_current_win(), view_win)
+    press(']r')
+    eq(window_title(0), ' Markdown Table Row 2/3 ')
+
+    -- Once entered it behaves like a focused view: leaving closes it.
+    vim.api.nvim_set_current_win(source_win)
+    eq(#floating_windows(), 0)
+end
+
+T['MarktableRowView peek closes and reopens per window in splits'] = function()
+    local source = source_buffer(view_table, 3)
+    local first_win = vim.api.nvim_get_current_win()
+    vim.cmd('split')
+    local second_win = vim.api.nvim_get_current_win()
+    vim.api.nvim_set_current_win(first_win)
+
+    vim.cmd('MarktableRowView')
+    eq(#floating_windows(), 1)
+
+    -- Moving to the other split closes the first window's peek.
+    vim.api.nvim_set_current_win(second_win)
+    eq(#floating_windows(), 0)
+
+    vim.api.nvim_win_set_cursor(second_win, { 5, 0 })
+    vim.cmd('MarktableRowView')
+    eq(vim.api.nvim_get_current_win(), second_win)
+    eq(window_title(floating_windows()[1]), ' Markdown Table Row 3/3 ')
+
+    vim.cmd('MarktableRowView')
+    press('[r')
+    eq(vim.api.nvim_win_get_cursor(second_win)[1], 4)
+    eq(vim.api.nvim_win_get_cursor(first_win)[1], 3)
+    eq(vim.api.nvim_win_get_buf(first_win), source)
+
+    -- Run in the other split without entering it (as :windo or a plugin
+    -- would): it must not focus this split's peek.
+    press('q')
+    vim.api.nvim_set_current_win(second_win)
+    vim.cmd('MarktableRowView')
+    vim.api.nvim_win_set_cursor(first_win, { 3, 0 })
+    vim.api.nvim_win_call(first_win, function()
+        vim.cmd('MarktableRowView')
+    end)
+    eq(vim.api.nvim_get_current_win(), second_win)
+    eq(window_title(floating_windows()[1]), ' Markdown Table Row 1/3 ')
+    vim.api.nvim_win_close(second_win, true)
+end
+
+T['MarktableRowView editor opens centered when the view side is too small'] = function()
+    local original_lines = vim.o.lines
+    -- With 11 screen lines and the cursor on screen row 5, the view goes below
+    -- with 3 rows of room: too small for the 5-line editor content.
+    vim.o.lines = 11
+    local ok, err = pcall(function()
+        source_buffer({ 'note', '', '| A | B |', '| --- | --- |', '| 1 | 2 |' }, 5)
+        vim.cmd('MarktableRowView')
+        vim.cmd('MarktableRowView')
+        local view_config = vim.api.nvim_win_get_config(0)
+        eq({ view_config.anchor, view_config.height }, { 'NW', 3 })
+
+        press('e')
+        local editor_config = vim.api.nvim_win_get_config(0)
+        eq(vim.bo.buftype, 'acwrite')
+        eq(editor_config.height, 8)
+    end)
+    vim.o.lines = original_lines
+    if not ok then
+        error(err)
+    end
+end
+
+T['MarktableRowView stores a column that keeps the view on screen'] = function()
+    local long = string.rep('x', 70)
+    source_buffer({ '| A | B |', '| --- | --- |', '| ' .. long .. ' | 2 |' }, 3)
+    vim.api.nvim_win_set_cursor(0, { 3, 72 })
+
+    vim.cmd('MarktableRowView')
+    local view_config = vim.api.nvim_win_get_config(floating_windows()[1])
+
+    eq(view_config.col + view_config.width + 2 <= vim.o.columns, true)
 end
 
 return T

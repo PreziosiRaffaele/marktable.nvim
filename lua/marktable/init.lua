@@ -8,7 +8,6 @@ local M = {}
 
 local float = require('marktable.float')
 local markdown_table = require('marktable.table')
-local row_view = require('marktable.view')
 local sections = require('marktable.sections')
 
 local namespace = vim.api.nvim_create_namespace('marktable')
@@ -34,6 +33,7 @@ local config = vim.deepcopy(defaults)
 ---@field table_info MarkdownTable Parsed table metadata from editor open time.
 ---@field mark_id integer Extmark tracking the replacement or insertion anchor.
 ---@field mode 'edit'|'new' Submit behavior.
+---@field written_line integer|nil 0-based source line written by a successful submit.
 
 ---@class MarktableEditorOpenOpts
 ---@field position MarktableFloatCorner|nil Open here instead of centered.
@@ -90,8 +90,11 @@ local function get_anchor_line(context)
         return nil, 'Source buffer is no longer valid'
     end
 
-    local position = vim.api.nvim_buf_get_extmark_by_id(context.source_buf, namespace, context.mark_id, {})
-    if #position == 0 then
+    local position = vim.api.nvim_buf_get_extmark_by_id(context.source_buf, namespace, context.mark_id, {
+        details = true,
+    })
+    -- The anchor is invalidated when its line is deleted.
+    if #position == 0 or (position[3] and position[3].invalid) then
         return nil, 'Table row target is no longer available'
     end
 
@@ -118,8 +121,10 @@ local function apply_row(context, cells)
 
     if context.mode == 'edit' then
         vim.api.nvim_buf_set_lines(context.source_buf, anchor_line, anchor_line + 1, false, { rendered_row })
+        context.written_line = anchor_line
     else
         vim.api.nvim_buf_set_lines(context.source_buf, anchor_line + 1, anchor_line + 1, false, { rendered_row })
+        context.written_line = anchor_line + 1
     end
 
     return true, nil
@@ -131,6 +136,13 @@ end
 ---@param context MarkdownTableEditorContext Editor context.
 ---@return boolean ok True when submission succeeded.
 local function submit_editor(editor_buf, editor_win, context)
+    -- The editor closes on a scheduled callback; a second write before then
+    -- (`:w | w`) must not apply the row again.
+    if context.written_line then
+        vim.bo[editor_buf].modified = false
+        return true
+    end
+
     local lines = vim.api.nvim_buf_get_lines(editor_buf, 0, -1, false)
     local cells, parse_err = sections.parse_lines(lines, context.table_info.headers)
     if not cells then
@@ -157,20 +169,23 @@ end
 ---Behavior:
 ---Centers the editor by default. With `position`, keeps that anchor corner,
 ---shifts left only as needed to fit the width, and caps the height to the room
----on the anchored side.
+---on the anchored side. When that room cannot show the whole content (or the
+---full configured height), the editor is centered instead.
 ---@param position MarktableFloatCorner|nil Anchor corner to open at.
+---@param line_count integer Number of editor content lines.
 ---@return table config Window config for `nvim_open_win`.
-local function floating_window_config(position)
+local function floating_window_config(position, line_count)
     local width, height = float.size_caps(config)
     local win_config = float.base_config()
     win_config.width = width
     win_config.height = height
 
-    if position then
+    local room = position and float.room(position.anchor, position.row) or 0
+    if position and room >= math.min(height, line_count) then
         win_config.anchor = position.anchor
         win_config.row = position.row
         win_config.col = math.min(position.col, float.max_col(width))
-        win_config.height = math.max(math.min(height, float.room(position.anchor, position.row)), 1)
+        win_config.height = math.min(height, room)
     else
         win_config.row = math.max(math.floor((vim.o.lines - height) / 2) - 1, 0)
         win_config.col = math.max(math.floor((vim.o.columns - width) / 2), 0)
@@ -195,10 +210,11 @@ local function open_row_editor(context, title, lines, opts)
     vim.bo[editor_buf].bufhidden = 'wipe'
     vim.bo[editor_buf].filetype = 'markdown'
     vim.bo[editor_buf].swapfile = false
+    float.mark_plugin_buffer(editor_buf)
     vim.api.nvim_buf_set_lines(editor_buf, 0, -1, false, lines)
     vim.bo[editor_buf].modified = false
 
-    local win_config = floating_window_config(opts.position)
+    local win_config = floating_window_config(opts.position, #lines)
     win_config.title = ' ' .. title .. ' '
 
     local editor_win = vim.api.nvim_open_win(editor_buf, true, win_config)
@@ -227,7 +243,8 @@ local function open_row_editor(context, title, lines, opts)
         once = true,
         callback = function()
             local ok, cursor = pcall(vim.api.nvim_win_get_cursor, editor_win)
-            local anchor_line = get_anchor_line(context)
+            -- Saving replaces the anchor's line, which invalidates the anchor.
+            local row_line = context.written_line or get_anchor_line(context)
             if vim.api.nvim_buf_is_valid(context.source_buf) then
                 pcall(vim.api.nvim_buf_del_extmark, context.source_buf, namespace, context.mark_id)
             end
@@ -235,7 +252,7 @@ local function open_row_editor(context, title, lines, opts)
             if on_close then
                 -- Window layout changes are not allowed inside WinClosed.
                 vim.schedule(function()
-                    on_close(ok and cursor or { 1, 0 }, anchor_line and anchor_line + 1)
+                    on_close(ok and cursor or { 1, 0 }, row_line and row_line + 1)
                 end)
             end
         end,
@@ -248,6 +265,20 @@ local function open_row_editor(context, title, lines, opts)
     end
 end
 
+---Refuse to run a command from one of the plugin's own floats.
+---
+---Behavior:
+---Editor and view text can look like a table, but it is never a source table.
+---@return boolean refused True when the command must not run.
+local function refuse_in_plugin_float()
+    if float.is_plugin_buffer(vim.api.nvim_get_current_buf()) then
+        warn('Run Marktable commands from the Markdown buffer, not from a Marktable window')
+        return true
+    end
+
+    return false
+end
+
 ---Set an extmark used as the source table row anchor.
 ---@param buf integer Source buffer handle.
 ---@param line_number integer 1-based source line number.
@@ -255,12 +286,17 @@ end
 local function set_anchor_mark(buf, line_number)
     return vim.api.nvim_buf_set_extmark(buf, namespace, line_number - 1, 0, {
         right_gravity = false,
+        invalidate = true,
     })
 end
 
 ---Open a new-row editor for the Markdown table under the cursor.
 ---@return nil
 local function open_new_row_editor()
+    if refuse_in_plugin_float() then
+        return
+    end
+
     local source_buf = vim.api.nvim_get_current_buf()
     local source_win = vim.api.nvim_get_current_win()
     local cursor_line = vim.api.nvim_win_get_cursor(source_win)[1]
@@ -290,6 +326,10 @@ end
 ---@param opts MarktableEditorOpenOpts|nil Position and cursor overrides.
 ---@return boolean opened True when the editor opened.
 local function open_current_row_editor(opts)
+    if refuse_in_plugin_float() then
+        return false
+    end
+
     local source_buf = vim.api.nvim_get_current_buf()
     local source_win = vim.api.nvim_get_current_win()
     local cursor_line = vim.api.nvim_win_get_cursor(source_win)[1]
@@ -319,7 +359,12 @@ end
 ---Peek at the data row under the cursor, or focus an already open peek.
 ---@return nil
 local function open_row_view()
-    row_view.open_or_focus(config, open_current_row_editor)
+    if refuse_in_plugin_float() then
+        return
+    end
+
+    -- Loaded on first use to keep startup cheap.
+    require('marktable.view').open_or_focus(config, open_current_row_editor)
 end
 
 -- ============================================================================

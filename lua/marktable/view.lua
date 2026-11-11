@@ -178,9 +178,16 @@ local function render_row(view, table_info, index)
     local lines = sections.build_lines(table_info.headers, table_info.rows[index].cells)
     local title = view_title(index, #table_info.rows)
 
+    local width = content_width(lines, title, view.max_width)
+    view.corner.col = math.min(view.corner.col, float.max_col(width))
+
     set_view_lines(view.buf, lines)
     vim.api.nvim_win_set_config(view.win, {
-        width = content_width(lines, title, view.max_width),
+        relative = 'editor',
+        anchor = view.corner.anchor,
+        row = view.corner.row,
+        col = view.corner.col,
+        width = width,
         title = title,
         title_pos = 'center',
     })
@@ -300,7 +307,23 @@ local function set_view_keymaps(view)
     end, 'Close Markdown table row view')
 end
 
----Close the peek when the user moves on in the source buffer.
+---Close the view when focus leaves it in browse mode.
+---@param view MarktableRowView Focused view.
+---@return nil
+local function set_browse_autocmds(view)
+    local group = reset_augroup()
+
+    vim.api.nvim_create_autocmd('WinLeave', {
+        group = group,
+        buffer = view.buf,
+        callback = function()
+            close_view(view, false)
+        end,
+    })
+end
+
+---Close the peek when the user moves on in the source, or switch it to browse
+---mode when the user enters it directly (`<C-w>w`, mouse click).
 ---@param view MarktableRowView Open, unfocused view.
 ---@return nil
 local function set_peek_autocmds(view)
@@ -330,11 +353,24 @@ local function set_peek_autocmds(view)
         end,
     })
 
-    vim.api.nvim_create_autocmd({ 'InsertEnter', 'BufLeave', 'BufHidden' }, {
+    -- BufWinLeave rather than BufLeave: switching windows must not close the
+    -- peek before WinEnter can tell whether the user entered it.
+    vim.api.nvim_create_autocmd({ 'InsertEnter', 'BufWinLeave', 'BufHidden' }, {
         group = group,
         buffer = view.source_buf,
         callback = function()
             close_view(view, false)
+        end,
+    })
+
+    vim.api.nvim_create_autocmd('WinEnter', {
+        group = group,
+        callback = function()
+            if vim.api.nvim_get_current_win() == view.win then
+                set_browse_autocmds(view)
+            else
+                close_view(view, false)
+            end
         end,
     })
 end
@@ -343,17 +379,15 @@ end
 ---@param view MarktableRowView Open, unfocused view.
 ---@return nil
 local function focus_view(view)
-    local group = reset_augroup()
+    -- Drop the peek triggers first; entering is handled explicitly here.
+    reset_augroup()
     vim.api.nvim_set_current_win(view.win)
-
-    vim.api.nvim_create_autocmd('WinLeave', {
-        group = group,
-        buffer = view.buf,
-        callback = function()
-            close_view(view, false)
-        end,
-    })
+    set_browse_autocmds(view)
 end
+
+---@class MarktableViewPlacement
+---@field corner MarktableFloatCorner Anchor corner of the view window.
+---@field max_height integer Height cap for the anchored side.
 
 ---@class MarktableViewSpec
 ---@field source_buf integer Markdown buffer the row comes from.
@@ -362,9 +396,9 @@ end
 ---@field table_info MarkdownTable Freshly parsed source table.
 ---@field index integer 1-based data-row index to show.
 ---@field max_width integer Width cap.
----@field height_cap integer Configured height cap.
----@field corner MarktableFloatCorner|nil Where to open; nil places it at the source cursor.
----@field max_height integer|nil Height cap that comes with `corner`.
+---@field height_cap integer Configured height cap, used to place a new view.
+---@field placement MarktableViewPlacement|nil Reuse a placement instead of
+---placing the view at the source cursor.
 ---@field cursor integer[]|nil View cursor; defaults to the first value line.
 ---@field open_editor fun(opts: MarktableEditorOpenOpts): boolean Opens the row editor for the source cursor row.
 
@@ -380,15 +414,20 @@ local function create_view(spec)
     local title = view_title(spec.index, #spec.table_info.rows)
     local width = content_width(lines, title, spec.max_width)
 
-    local corner, max_height = spec.corner, spec.max_height
-    if not corner or not max_height then
+    local corner, max_height
+    if spec.placement then
+        corner, max_height = vim.deepcopy(spec.placement.corner), spec.placement.max_height
+    else
         corner, max_height = placement(spec.source_win, estimated_height(lines, width), spec.height_cap)
     end
+    -- Store the position Neovim will actually use, so the editor opens there.
+    corner.col = math.min(corner.col, float.max_col(width))
 
     local buf = vim.api.nvim_create_buf(false, true)
     vim.bo[buf].buftype = 'nofile'
     vim.bo[buf].bufhidden = 'wipe'
     vim.bo[buf].swapfile = false
+    float.mark_plugin_buffer(buf)
     set_view_lines(buf, lines)
     vim.bo[buf].filetype = 'markdown'
 
@@ -462,18 +501,24 @@ end
 ---Shows the current content of the edited row, at the same position, with the
 ---cursor where the editor left it. The row is the one the editor's anchor
 ---tracked, so it is still right when lines above the table changed meanwhile.
----Warns and stays in the source window when it is no longer a data row.
+---Warns and stays in the source window when the row was deleted or is no
+---longer a data row.
 ---@param previous MarktableRowView The view that launched the editor.
 ---@param cursor integer[] Last editor cursor.
----@param line integer|nil 1-based source line of the edited row, if still known.
+---@param line integer|nil 1-based source line of the edited row; nil when the
+---row was deleted.
 ---@return nil
 return_to_view = function(previous, cursor, line)
     if not source_window_ready(previous) then
         return
     end
 
-    line = line or previous.line
     vim.api.nvim_set_current_win(previous.source_win)
+    if not line then
+        warn('Markdown table row is no longer available')
+        return
+    end
+
     local table_info, index, err = markdown_table.find_data_row(previous.source_buf, line)
     if not table_info or not index then
         warn(err or 'Markdown table row is no longer available')
@@ -487,10 +532,9 @@ return_to_view = function(previous, cursor, line)
         line = line,
         table_info = table_info,
         index = index,
-        corner = previous.corner,
         max_width = previous.max_width,
         height_cap = previous.max_height,
-        max_height = previous.max_height,
+        placement = { corner = previous.corner, max_height = previous.max_height },
         cursor = cursor,
         open_editor = previous.open_editor,
     })
@@ -504,27 +548,15 @@ end
 ---Peek at the data row under the cursor, or focus the open peek.
 ---
 ---Behavior:
----When a peek for the current buffer is open and unfocused, focus it for
----browsing. Otherwise open a new peek, replacing any previous view. Warns and
----keeps any open view when run from the view itself or when the cursor is not
----on a supported data row.
+---When a peek opened from the current window is open, focus it for browsing.
+---Otherwise open a new peek, replacing any previous view. Warns and keeps any
+---open view when the cursor is not on a supported data row.
 ---@param config MarktableConfig Active plugin settings.
 ---@param open_editor fun(opts: MarktableEditorOpenOpts): boolean Opens the row editor for the source cursor row.
 ---@return nil
 function M.open_or_focus(config, open_editor)
     local view = current
-    -- The view's own text can look like a table; never treat it as a source.
-    if view and vim.api.nvim_get_current_buf() == view.buf then
-        warn('Run :MarktableRowView from the Markdown buffer, not the row view')
-        return
-    end
-
-    if
-        view
-        and vim.api.nvim_win_is_valid(view.win)
-        and view.source_buf == vim.api.nvim_get_current_buf()
-        and vim.api.nvim_get_current_win() ~= view.win
-    then
+    if view and vim.api.nvim_win_is_valid(view.win) and view.source_win == vim.api.nvim_get_current_win() then
         focus_view(view)
         return
     end

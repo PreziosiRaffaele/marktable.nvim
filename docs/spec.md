@@ -25,8 +25,8 @@ any domain-specific table schema. Column headers define the editable fields.
   editable source buffer from that row, show its table data-row index in the
   `Edit Markdown Table Row N` editor title, then replace only that row.
 - `:MarktableRowView`: show the data row under the cursor in a read-only
-  floating view without changing the buffer. If a view for the current buffer
-  is already open and unfocused, focus it instead. See
+  floating view without changing the buffer. If a view opened from the current
+  window is already open, focus it instead. See
   [View Behavior](#view-behavior).
 
 Submit the floating editor with `:w` or `:wq`. Cancel with `q`.
@@ -153,14 +153,16 @@ stays in the source window.
   content. Both are capped by the configured `width` and `height` and by the
   available UI space.
 - The view closes when, in the source buffer, the cursor moves, the text
-  changes, insert mode starts, or the buffer is left or hidden.
+  changes, insert mode starts, or the buffer leaves its window or is hidden.
+  It also closes when focus moves to any other window.
 - Only one view is open at a time; opening a new one closes the previous one.
 
 ### Browse
 
-Running `:MarktableRowView` again while the peek is open focuses the view. The
-peek close triggers stop applying, and these buffer-local normal-mode keys are
-available:
+Running `:MarktableRowView` again from the same window while the peek is open
+focuses the view. Entering the peek directly (`<C-w>w`, a mouse click) does the
+same. The peek close triggers stop applying, and these buffer-local
+normal-mode keys are available:
 
 | Key                     | Action                                                            |
 | ----------------------- | ----------------------------------------------------------------- |
@@ -193,7 +195,9 @@ and run the `:MarktableRowEdit` flow with two differences:
 - The editor opens where the view was: it keeps the view's anchor corner (top
   left when the view was below the cursor, bottom left when above), uses the
   configured `width` and `height`, shifts left only as needed to fit the
-  screen, and caps its height to the room on the anchored side.
+  screen, and caps its height to the room on the anchored side. When that room
+  cannot show the whole row (or the full configured height), the editor opens
+  centered instead.
 - The editor cursor starts at the view's cursor position. The editor buffer has
   the same lines as the view, so the position maps one to one.
 
@@ -280,7 +284,8 @@ lua/marktable/float.lua
 ```
 
 It sizes, places, and styles the editor and view floats, so both use the same
-size caps, border math, and window options.
+size caps, border math, and window options. It also marks their buffers, so
+commands can refuse to treat a plugin window as a source table.
 
 The command module lives at:
 
@@ -305,14 +310,20 @@ for side-effecting functions.
 
 - Canceling the editor leaves the buffer unchanged, including its anchor
   extmark, which is removed whenever the editor closes.
+- Writing the editor again before it closes (`:w | w`) does not apply the row
+  a second time.
+- If the edited row is deleted from the source while the editor is open,
+  submitting fails with `ERROR` and the editor stays open; it never writes over
+  a neighboring row. An editor opened from the view that then closes warns
+  instead of reopening the view on another row.
 - Header or separator edit attempts warn and do not modify the buffer.
 - Tables with duplicate or empty headers warn and do not modify the buffer.
 - Malformed rows warn and do not modify the buffer.
 - Empty submitted fields render as empty cells.
 - `:MarktableRowView` on the header or separator row, outside a table, or on a
-  malformed table warns and opens nothing. Run from inside the view buffer, it
-  warns and leaves the open view unchanged, even when the view's text itself
-  looks like a table.
+  malformed table warns and opens nothing.
+- Any Marktable command run from inside an editor or view window warns and does
+  nothing, even when that window's text itself looks like a table.
 - If the row is no longer a supported data row when `e` or an insert key is
   pressed, the view warns and stays open instead of opening the editor.
 - A table with a single data row can be viewed; `]r` and `[r` do nothing.

@@ -139,6 +139,24 @@ T['saving from the view leaves no anchor extmarks behind'] = function()
     eq(count, 0)
 end
 
+T['the view warns instead of reopening on another row when the row was deleted'] = function()
+    child.lua([[
+        _G.messages = {}
+        vim.notify = function(message) table.insert(_G.messages, message) end
+    ]])
+    focus_view()
+    child.type_keys('e')
+
+    -- The edited row (Alpha) is deleted while the editor is open.
+    child.lua([[vim.api.nvim_buf_set_lines(1, 2, 3, false, {})]])
+    child.type_keys('q')
+
+    eq(wait_until([[#_G.messages > 0]]), true)
+    eq(child.lua_get('_G.messages'), { 'Markdown table row is no longer available' })
+    eq(state().floats, 0)
+    eq(state().buftype, '')
+end
+
 T['MarktableRowEdit still closes back to the table'] = function()
     child.cmd('MarktableRowEdit')
     child.type_keys('A', ' direct', '<Esc>', ':w<CR>')

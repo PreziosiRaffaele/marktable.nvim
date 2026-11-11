@@ -1,7 +1,7 @@
 ---Floating window layout shared by the row editor and the row view.
 ---
 ---Responsibility:
----Size, place, and style the plugin's floating windows within the Neovim UI.
+---Size, place, style, and identify the plugin's floating windows.
 local M = {}
 
 ---@class MarktableFloatCorner
@@ -11,6 +11,9 @@ local M = {}
 
 -- Rows (or columns) taken by the single-line border, both sides together.
 local border_size = 2
+
+-- Buffer variable set on every editor and view buffer.
+local plugin_buffer_var = 'marktable_float'
 
 -- ============================================================================
 -- Public API
@@ -65,6 +68,20 @@ function M.set_window_options(win)
     vim.wo[win].relativenumber = false
     vim.wo[win].signcolumn = 'no'
     vim.wo[win].wrap = true
+end
+
+---Mark a buffer as an editor or view buffer of this plugin.
+---@param buf integer Buffer handle.
+---@return nil
+function M.mark_plugin_buffer(buf)
+    vim.b[buf][plugin_buffer_var] = true
+end
+
+---Check whether a buffer is an editor or view buffer of this plugin.
+---@param buf integer Buffer handle.
+---@return boolean owned True for the plugin's own float buffers.
+function M.is_plugin_buffer(buf)
+    return vim.b[buf][plugin_buffer_var] == true
 end
 
 return M
