@@ -48,6 +48,31 @@ function M.max_col(width)
     return math.max(vim.o.columns - width - border_size, 0)
 end
 
+---Width that fits lines and a title, within a cap.
+---@param lines string[] Buffer lines.
+---@param title string Window title.
+---@param max_width integer Width cap.
+---@return integer width Content width, in columns, at least 1.
+function M.content_width(lines, title, max_width)
+    local width = vim.fn.strdisplaywidth(title)
+    for _, line in ipairs(lines) do
+        width = math.max(width, vim.fn.strdisplaywidth(line))
+    end
+
+    return math.max(math.min(width, max_width), 1)
+end
+
+---Shrink or grow a float's height to its soft-wrapped text.
+---@param win integer Floating window handle.
+---@param max_height integer Height cap.
+---@return nil
+function M.fit_height(win, max_height)
+    local text_height = vim.api.nvim_win_text_height(win, {}).all
+    vim.api.nvim_win_set_config(win, {
+        height = math.max(math.min(text_height, max_height), 1),
+    })
+end
+
 ---Base `nvim_open_win` config shared by every plugin float.
 ---@return table config Editor-relative, minimal, bordered window config.
 function M.base_config()

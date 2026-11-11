@@ -56,8 +56,16 @@ require('marktable').setup({
 Both values are clamped to the available UI space so the window never overflows
 the screen. Content taller than the window scrolls.
 
-The row view uses `width` and `height` as maximums and shrinks to fit its
-content.
+The row view, and an editor opened in its place, use `width` and `height` as
+maximums and fit their content.
+
+Two highlight groups style the row view border. Both are defined with
+`default = true`, so color schemes and user settings override them:
+
+| Group                      | Default link  | Used for                        |
+| -------------------------- | ------------- | ------------------------------- |
+| `MarktableViewBorder`      | `FloatBorder` | View border while peeking.      |
+| `MarktableViewFocusBorder` | `Special`     | View border while it has focus. |
 
 ## Table Shape
 
@@ -139,7 +147,7 @@ Cell rendering rules:
 The row view shows the same section format as the editor (see
 [Source Format](#source-format)) in a read-only buffer (`buftype=nofile`,
 `filetype=markdown`, `modifiable=false`), so it cannot be edited or written.
-Its title is `Markdown Table Row N/M`, where `N` is the data-row index and `M`
+Its title is `View Markdown Table Row N/M`, where `N` is the data-row index and `M`
 is the number of data rows.
 
 ### Peek
@@ -167,8 +175,11 @@ stays in the source window.
 
 Running `:MarktableRowView` again from the same window while the peek is open
 focuses the view. Entering the peek directly (`<C-w>w`, a mouse click) does the
-same. The peek close triggers stop applying, and these buffer-local
-normal-mode keys are available:
+same. A focused view shows it: its border switches from `MarktableViewBorder`
+to `MarktableViewFocusBorder`, and the bottom border shows the key hint
+` ]r [r · e edit · q `. The hint is shorter than the title, so it never changes
+the view's width. The peek close triggers stop applying, and these
+buffer-local normal-mode keys are available:
 
 | Key                     | Action                                                            |
 | ----------------------- | ----------------------------------------------------------------- |
@@ -199,12 +210,18 @@ buffer is not modifiable.
 `e` and the insert keys close the view, put the source cursor on the shown row,
 and run the `:MarktableRowEdit` flow with two differences:
 
-- The editor opens where the view was: it keeps the view's anchor corner (top
-  left when the view was below the cursor, bottom left when above), uses the
-  configured `width` and `height`, shifts left only as needed to fit the
-  screen, and caps its height to the room on the anchored side. When that room
-  cannot show the whole row (or the full configured height), the editor opens
-  centered instead.
+- The editor opens where the view was, at the view's size: it keeps the view's
+  anchor corner (top left when the view was below the cursor, bottom left when
+  above) and the view's width and height, so switching does not move or
+  resize the window. The view title is never shorter than the editor title,
+  so the editor title fits the same width.
+- While typing, the editor grows to fit its content (longest line for the
+  width, soft-wrapped lines for the height) up to the configured `width` and
+  `height` and the room on the anchored side, moving left only as far as
+  needed to stay on screen. It never shrinks below the width it opened with.
+- When the room on the anchored side cannot show the whole row (or the full
+  configured height), the editor opens centered at the fixed configured size
+  instead, like a `:MarktableRowEdit` editor.
 - The editor cursor starts at the view's cursor position. The editor buffer has
   the same lines as the view, so the position maps one to one.
 
@@ -299,8 +316,9 @@ lua/marktable/float.lua
 ```
 
 It sizes, places, and styles the editor and view floats, so both use the same
-size caps, border math, and window options. It also marks their buffers, so
-commands can refuse to treat a plugin window as a source table.
+size caps, border math, content fitting, and window options. It also marks
+their buffers, so commands can refuse to treat a plugin window as a source
+table.
 
 The command module lives at:
 

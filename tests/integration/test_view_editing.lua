@@ -67,7 +67,7 @@ T['saving the editor returns to the view with the updated row'] = function()
 
     eq(wait_for_view(), true)
     local current = state()
-    eq(current.title, ' Markdown Table Row 1/3 ')
+    eq(current.title, ' View Markdown Table Row 1/3 ')
     eq(current.floats, 1)
     eq(current.cursor_row, 2)
     eq(child.lua_get('vim.api.nvim_buf_get_lines(0, 0, 2, false)'), { '# Name', 'Alpha plus' })
@@ -81,7 +81,7 @@ T['the view keeps browsing and editing other rows'] = function()
 
     child.type_keys(']r', 'A', '?', '<Esc>', ':w<CR>')
     eq(wait_for_view(), true)
-    eq(state().title, ' Markdown Table Row 2/3 ')
+    eq(state().title, ' View Markdown Table Row 2/3 ')
 
     child.type_keys('q')
     local current = state()
@@ -103,7 +103,7 @@ T['canceling the editor returns to the view unchanged'] = function()
         child.type_keys('A', ' dropped', '<Esc>', unpack(cancel))
 
         eq(wait_for_view(), true)
-        eq(state().title, ' Markdown Table Row 1/3 ')
+        eq(state().title, ' View Markdown Table Row 1/3 ')
         eq(child.lua_get('vim.api.nvim_buf_get_lines(0, 1, 2, false)'), { 'Alpha' })
         eq(source(), source_lines)
 
@@ -121,7 +121,7 @@ T['the view returns to the edited row when lines above the table change'] = func
     child.type_keys(':w<CR>')
 
     eq(wait_for_view(), true)
-    eq(state().title, ' Markdown Table Row 2/3 ')
+    eq(state().title, ' View Markdown Table Row 2/3 ')
     eq(child.lua_get('vim.api.nvim_buf_get_lines(0, 1, 2, false)'), { 'Beta!' })
     eq(source()[6], '| Beta! | two |')
     eq(child.lua_get('vim.api.nvim_win_get_cursor(vim.fn.win_getid(1))[1]'), 6)
@@ -169,6 +169,38 @@ T['the reopened view fits a terminal resized while the editor was open'] = funct
     local view_config = child.api.nvim_win_get_config(0)
     eq(view_config.width <= 36, true)
     eq(view_config.col + view_config.width + 2 <= 40, true)
+end
+
+local function win_size(win)
+    local config = child.api.nvim_win_get_config(win)
+    return { anchor = config.anchor, row = config.row, col = config.col, width = config.width, height = config.height }
+end
+
+T['the editor opens at the view size and grows to fit what is typed'] = function()
+    child.o.columns = 80
+    focus_view()
+    local view = win_size(0)
+
+    child.type_keys('e')
+    eq(win_size(0), view)
+
+    child.type_keys('A', ' and a much longer note that needs a wider window', '<Esc>')
+    local grown = win_size(0)
+    eq(grown.width > view.width, true)
+    eq(grown.width <= 76, true)
+    eq({ grown.anchor, grown.row }, { view.anchor, view.row })
+
+    -- Deleting text never shrinks it below the width it opened with.
+    child.type_keys('S', '<Esc>')
+    eq(win_size(0).width >= view.width, true)
+end
+
+T['MarktableRowEdit keeps the fixed configured size'] = function()
+    child.o.columns = 80
+    child.cmd('MarktableRowEdit')
+
+    local editor = win_size(0)
+    eq({ editor.width, editor.height }, { 76, 16 })
 end
 
 T['MarktableRowEdit still closes back to the table'] = function()
