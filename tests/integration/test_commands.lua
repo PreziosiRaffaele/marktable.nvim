@@ -244,9 +244,9 @@ T['MarktableRowView peeks without taking focus'] = function()
     eq(vim.bo[view_buf].filetype, 'markdown')
     eq(lines(source), view_table)
 
-    -- Sized to content: the title is the widest line, one row per line.
+    -- A short row gets the comfortable minimum width; one row per line.
     local win_config = vim.api.nvim_win_get_config(wins[1])
-    eq(win_config.width, #' View Markdown Table Row 1/3 ')
+    eq(win_config.width, 60)
     eq(win_config.height, 6)
 end
 
@@ -671,15 +671,17 @@ T['MarktableRowView moves back right after a wide row'] = function()
         '| A | B |',
         '| --- | --- |',
         '| a' .. padding .. '| b |',
-        '| ' .. string.rep('w', 60) .. ' | b |',
+        '| ' .. string.rep('w', 70) .. ' | b |',
         '| c | d |',
     }, 3)
-    vim.api.nvim_win_set_cursor(0, { 3, 45 })
+    -- The 60-column minimum fits at column 10 on an 80-column screen; the
+    -- 70-column row does not.
+    vim.api.nvim_win_set_cursor(0, { 3, 10 })
 
     vim.cmd('MarktableRowView')
     vim.cmd('MarktableRowView')
     local wanted = vim.api.nvim_win_get_config(0).col
-    eq(wanted, 45)
+    eq(wanted, 10)
 
     press(']r')
     eq(vim.api.nvim_win_get_config(0).col < wanted, true)
@@ -701,6 +703,18 @@ T['MarktableRowView opens below every screen line of a wrapped row'] = function(
     local view_config = vim.api.nvim_win_get_config(floating_windows()[1])
 
     eq({ view_config.anchor, view_config.row }, { 'NW', 5 })
+end
+
+T['MarktableRowView rows narrower than the minimum share one width'] = function()
+    source_buffer(view_table, 3)
+
+    vim.cmd('MarktableRowView')
+    vim.cmd('MarktableRowView')
+    local width = vim.api.nvim_win_get_config(0).width
+    press(']r')
+    eq(vim.api.nvim_win_get_config(0).width, width)
+    press(']r')
+    eq(vim.api.nvim_win_get_config(0).width, width)
 end
 
 T['MarktableRowView ]r and [r take a count'] = function()

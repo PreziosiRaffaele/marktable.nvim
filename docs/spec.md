@@ -57,7 +57,8 @@ Both values are clamped to the available UI space so the window never overflows
 the screen. Content taller than the window scrolls.
 
 The row view, and an editor opened in its place, use `width` and `height` as
-maximums and fit their content.
+maximums and fit their content. They are never narrower than `min(width, 60)`
+columns, so short rows still leave room to type.
 
 Two highlight groups style the row view border. Both are defined with
 `default = true`, so color schemes and user settings override them:
@@ -159,9 +160,10 @@ stays in the source window.
   room below. A soft-wrapped row is never covered: the view goes below its last
   screen line or above its first. The view starts at the cursor's column and
   moves left only as far as needed to stay on screen.
-- Width fits the longest line and the title; height fits the soft-wrapped
-  content. Both are capped by the configured `width` and `height` and by the
-  available UI space.
+- Width fits the longest line and the title, but is at least `min(width, 60)`
+  columns, so rows narrower than that all share one width. Height fits the
+  soft-wrapped content. Both are capped by the configured `width` and `height`
+  and by the available UI space.
 - The view closes when, in the source buffer, the cursor moves, the text
   changes, insert mode starts, or the buffer leaves its window or is hidden.
   It also closes when another buffer is shown in the source window, or when
@@ -215,10 +217,13 @@ and run the `:MarktableRowEdit` flow with two differences:
   above) and the view's width and height, so switching does not move or
   resize the window. The view title is never shorter than the editor title,
   so the editor title fits the same width.
-- While typing, the editor grows to fit its content (longest line for the
-  width, soft-wrapped lines for the height) up to the configured `width` and
-  `height` and the room on the anchored side, moving left only as far as
-  needed to stay on screen. It never shrinks below the width it opened with.
+- While typing, the editor keeps its width until a line no longer fits. Then
+  it widens straight to its width cap (the configured `width`, limited by the
+  screen) in one step instead of following the text column by column, and
+  long lines soft-wrap from there. Its height follows the soft-wrapped content
+  up to the configured `height` and the room on the anchored side. It moves
+  left only as far as needed to stay on screen and never shrinks while
+  editing.
 - When the room on the anchored side cannot show the whole row (or the full
   configured height), the editor opens centered at the fixed configured size
   instead, like a `:MarktableRowEdit` editor.
