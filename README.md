@@ -40,6 +40,12 @@ else in the file changes, and no hidden markers are added.
 
 ## Installation
 
+With the built-in plugin manager, `vim.pack` (Neovim 0.12+):
+
+```lua
+vim.pack.add({ 'https://github.com/PreziosiRaffaele/marktable.nvim' })
+```
+
 With [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
